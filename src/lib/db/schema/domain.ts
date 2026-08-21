@@ -237,6 +237,109 @@ export const notifications = sqliteTable(
 );
 
 // ---------------------------------------------------------------------
+// 13. Payments and subscriptions (NOWPayments crypto payments, step 2
+//     of the payments spec — backend infrastructure only, no UI/flow
+//     wired to it yet). See lib/db/repositories/payments.ts for reads/
+//     writes and lib/payments/nowpayments/{checkout,webhook}.ts for the
+//     orchestration that writes these.
+//
+//     `payment` is the durable record of every payment attempt, one row
+//     per NOWPayments payment_id, created BEFORE the create-payment
+//     endpoint ever returns success (never inferred after the fact from
+//     an IPN alone) and updated in place by the IPN webhook as
+//     NOWPayments reports status transitions (waiting -> confirming ->
+//     ... -> finished/failed/expired/refunded). `subscription` is
+//     created only once a payment's status reaches "finished" — a
+//     partial unique index enforces at most one ACTIVE subscription per
+//     user, and a plain unique index on paymentId means the exact same
+//     payment can never activate two subscriptions no matter how many
+//     times its "finished" IPN is delivered (NOWPayments retries IPNs
+//     that aren't acknowledged, so idempotency here is not optional).
+// ---------------------------------------------------------------------
+export const payments = sqliteTable(
+  "payment",
+  {
+    id: id(),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("nowpayments"),
+    // NOWPayments' own payment_id — the identity a repeated/duplicate
+    // IPN is matched against. Must be unique (section 1's "a NOWPayments
+    // payment ID must be unique").
+    providerPaymentId: text("providerPaymentId").notNull(),
+    // Our own idempotency reference, generated before calling
+    // NOWPayments and sent as their `order_id` — lets a request that
+    // times out after NOWPayments accepted it but before our response
+    // came back be recognized as "already created" rather than retried
+    // into a second payment.
+    orderId: text("orderId").notNull(),
+    priceAmount: real("priceAmount").notNull(),
+    priceCurrency: text("priceCurrency").notNull(),
+    payCurrency: text("payCurrency"),
+    payAmount: real("payAmount"),
+    // Set only by the direct-payment flow (lib/payments/nowpayments/
+    // client.ts's createPayment) — unused by the hosted-invoice flow
+    // (createInvoice) Step 3's UI actually calls, which never shows a
+    // raw address of its own. Kept rather than dropped: harmless to
+    // leave, and available again if a future non-hosted flow needs it.
+    payAddress: text("payAddress"),
+    // The hosted NOWPayments checkout page (Step 3) — what the
+    // frontend redirects the user to. Null for a payment created via
+    // the direct-payment flow instead.
+    paymentUrl: text("paymentUrl"),
+    // waiting | confirming | confirmed | sending | partially_paid |
+    // finished | failed | expired | refunded — NOWPayments' own status
+    // vocabulary, stored verbatim rather than mapped to a narrower enum
+    // so a status this app doesn't specially handle yet is still
+    // visible/auditable instead of silently coerced.
+    status: text("status").notNull().default("waiting"),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+    completedAt: integer("completedAt", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("payment_provider_payment_id_uq").on(t.provider, t.providerPaymentId),
+    uniqueIndex("payment_order_id_uq").on(t.orderId),
+    index("payment_user_idx").on(t.userId),
+    index("payment_user_status_idx").on(t.userId, t.status),
+  ],
+);
+
+export const subscriptions = sqliteTable(
+  "subscription",
+  {
+    id: id(),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    // "active" is the only status this MVP ever writes; the column
+    // stays free text (not a narrower type) so a future cancellation/
+    // expiry-sweep feature can write "canceled"/"expired" without a
+    // schema change.
+    status: text("status").notNull().default("active"),
+    startedAt: integer("startedAt", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+    expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+    paymentId: text("paymentId")
+      .notNull()
+      .references(() => payments.id, { onDelete: "restrict" }),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [
+    index("subscription_user_idx").on(t.userId),
+    // At most one payment ever activates one subscription — the DB-
+    // level idempotency guard a repeated "finished" IPN relies on
+    // (onConflictDoNothing target), not an application-level
+    // check-then-insert race.
+    uniqueIndex("subscription_payment_uq").on(t.paymentId),
+    // At most one ACTIVE subscription per user at a time (section 4:
+    // "do not create duplicate active subscriptions") — enforced only
+    // while status='active', so a later canceled/expired history for
+    // the same user is never blocked by this index.
+    uniqueIndex("subscription_user_active_uq")
+      .on(t.userId, t.status)
+      .where(sql`${t.status} = 'active'`),
+  ],
+);
+
+// ---------------------------------------------------------------------
 // 9. Sellers
 // ---------------------------------------------------------------------
 export const sellers = sqliteTable(

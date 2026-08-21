@@ -14,6 +14,9 @@
 // and runAvailabilitySweep(), so there is only ONE implementation of
 // each (section 12: "do not introduce multiple competing
 // schedulers") — this file just offers a second way to trigger them.
+// Also runs a one-time NOWPayments config presence check on boot (see
+// below) — unrelated to the scheduler, just piggybacking on the same
+// "runs once when the server starts" hook.
 export async function register() {
   // Edge and browser instrumentation also import this file — the
   // interval (and the DB access inside runCleanup) only make sense in
@@ -23,6 +26,24 @@ export async function register() {
   // loads this module — there's no long-lived process to schedule
   // against at build time.
   if (process.env.NEXT_PHASE === "phase-production-build") return;
+
+  // NOWPayments (crypto payments, section 1 of the payments spec —
+  // config/connectivity foundation only, no subscription/checkout flow
+  // yet). A local env-presence check only (no network call, so this is
+  // cheap and safe on every boot, including dev hot-reloads) — never
+  // logs the key/secret values themselves, only which are missing.
+  const { checkNowPaymentsConfig } = await import("@/lib/payments/nowpayments/env");
+  const nowPaymentsStatus = checkNowPaymentsConfig();
+  if (nowPaymentsStatus.configured) {
+    console.log(
+      `[instrumentation] NOWPayments configured (${nowPaymentsStatus.environment}, ${nowPaymentsStatus.apiBaseUrl})`,
+    );
+  } else {
+    console.warn(
+      `[instrumentation] NOWPayments not fully configured — missing: ${nowPaymentsStatus.missing.join(", ")}. ` +
+        "Payment features will be unavailable until these are set (see .env.example).",
+    );
+  }
 
   const { runCleanup } = await import("@/lib/maintenance/cleanup");
   const { runAvailabilitySweep } = await import("@/lib/products/availability");

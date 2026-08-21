@@ -57,6 +57,20 @@
       "when": 1787288776912,
       "tag": "0007_demonic_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787309556400,
+      "tag": "0008_talented_aaron_stack",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787317113134,
+      "tag": "0009_easy_proemial_gods",
+      "breakpoints": true
     }
   ]
 }

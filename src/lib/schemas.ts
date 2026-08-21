@@ -251,3 +251,22 @@ export const LookSnapshotSchema = z.object({
     .max(12),
 });
 export type LookSnapshotRequestInput = z.infer<typeof LookSnapshotSchema>;
+
+// What NOWPayments POSTs to the IPN (webhook) callback. The signature
+// check (lib/payments/nowpayments/ipn.ts's verifyIpnSignature) is the
+// real security boundary here, not this schema — it MUST run against
+// the complete raw parsed body before this schema ever narrows it down,
+// since NOWPayments signs the full payload and stripping fields first
+// would make a genuine signature look invalid. This just guards against
+// a malformed/wrong-shaped body reaching the processing logic once the
+// signature has already been verified.
+export const NowPaymentsIpnSchema = z.object({
+  payment_id: z.union([z.string(), z.number()]),
+  payment_status: z.string().trim().min(1).max(40),
+  pay_currency: z.string().trim().max(40).nullish(),
+  pay_amount: z.number().nullish(),
+  price_amount: z.number().nullish(),
+  price_currency: z.string().trim().max(10).nullish(),
+  order_id: z.string().nullish(),
+});
+export type NowPaymentsIpnInput = z.infer<typeof NowPaymentsIpnSchema>;
