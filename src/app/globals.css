@@ -46,6 +46,14 @@
 html,
 body {
   height: 100%;
+  /* Belt-and-suspenders for mobile: any single element that ends up
+     wider than the viewport (a long unbreakable string, a stray fixed
+     width) must never force the whole page wider and make the browser
+     zoom out to fit it — clip at the page level instead. Every
+     intentionally horizontal-scrolling row (chip carousels) already
+     manages its own overflow-x-auto on a nested container, so this
+     never hides content that's meant to scroll. */
+  overflow-x: hidden;
 }
 
 body {
