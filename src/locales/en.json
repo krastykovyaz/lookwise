@@ -75,6 +75,16 @@
     "aboutBody": "Lookwise is an AI-powered app for finding pre-owned goods. Compass AI powers search, and eBay Sandbox results are now live — checkout and orders arrive in a later milestone.",
     "version": "Version"
   },
+  "notifications": {
+    "title": "Notifications",
+    "emptyTitle": "No notifications yet",
+    "emptyHint": "Important updates about your Looks and Items will appear here.",
+    "markAllRead": "Mark all as read",
+    "loadMore": "Load more",
+    "loadingMore": "Loading...",
+    "errorTitle": "Couldn't load notifications",
+    "retry": "Retry"
+  },
   "results": {
     "foundPrefix": "I found",
     "foundOptions": "options.",

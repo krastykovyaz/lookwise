@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runCleanup } from "@/lib/maintenance/cleanup";
+import { runAvailabilitySweep } from "@/lib/products/availability";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,11 @@ export async function POST(request: Request) {
 
   try {
     const stats = await runCleanup();
-    return NextResponse.json({ ok: true, ...stats });
+    // Same maintenance window, added as a sibling field rather than
+    // merged into `stats` — every existing field/consumer of this
+    // route's response keeps working unchanged.
+    const availability = await runAvailabilitySweep();
+    return NextResponse.json({ ok: true, ...stats, availability });
   } catch (err) {
     console.error("[POST /api/maintenance/cleanup] failed:", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

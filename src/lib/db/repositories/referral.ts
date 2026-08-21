@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db/client";
 import { REFERRAL_CODE_ALPHABET, REFERRAL_CODE_LENGTH } from "@/lib/referral/cookies";
+import { createNotification } from "@/lib/db/repositories/notifications";
 
 const MAX_GENERATION_ATTEMPTS = 5;
 
@@ -78,7 +79,7 @@ export async function createReferralIfAbsent(input: {
   sourceId?: string | null;
 }) {
   if (input.referrerUserId === input.referredUserId) return;
-  await db
+  const [row] = await db
     .insert(schema.referrals)
     .values({
       referrerUserId: input.referrerUserId,
@@ -86,5 +87,22 @@ export async function createReferralIfAbsent(input: {
       sourceType: input.sourceType ?? null,
       sourceId: input.sourceId ?? null,
     })
-    .onConflictDoNothing({ target: schema.referrals.referredUserId });
+    .onConflictDoNothing({ target: schema.referrals.referredUserId })
+    .returning({ id: schema.referrals.id });
+
+  // Only when a row was actually inserted (empty on conflict — the
+  // referredUserId unique index made this a no-op) — never a second
+  // notification for the same relationship.
+  if (!row) return;
+  try {
+    await createNotification({
+      userId: input.referrerUserId,
+      type: "REFERRAL",
+      title: "New referral",
+      body: "Someone joined Lookwise using your referral link.",
+      dedupeKey: `referral:${row.id}`,
+    });
+  } catch (err) {
+    console.error("[createReferralIfAbsent] notification creation failed:", err);
+  }
 }

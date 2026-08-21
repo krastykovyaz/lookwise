@@ -50,6 +50,13 @@
       "when": 1787248897786,
       "tag": "0006_military_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787288776912,
+      "tag": "0007_demonic_doctor_faustus",
+      "breakpoints": true
     }
   ]
 }
