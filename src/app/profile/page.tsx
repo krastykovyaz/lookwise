@@ -1,23 +1,28 @@
 "use client";
 
-import { User, DollarSign, Bell, Info, LogOut } from "lucide-react";
+import { User, DollarSign, Bell, Info, LogOut, ChevronRight } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSelector } from "@/components/ui/LanguageSelector";
 import { CurrencySelector } from "@/components/ui/CurrencySelector";
 import { LookProfileSummary } from "@/components/look/LookProfileSummary";
+import { NotificationsBadge } from "@/components/profile/NotificationsBadge";
 import Link from "next/link";
 
 function Row({
   icon: Icon,
   label,
   trailing,
+  href,
 }: {
   icon: React.ElementType;
   label: string;
   trailing: React.ReactNode;
+  /** Optional: makes the whole row a nested-navigation link (e.g.
+   *  Profile -> Notifications) instead of a static settings row. */
+  href?: string;
 }) {
-  return (
+  const content = (
     <div className="flex items-center justify-between px-4 py-3.5">
       <div className="flex items-center gap-3">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-background text-muted">
@@ -25,8 +30,18 @@ function Row({
         </span>
         <span className="text-[14px] text-foreground">{label}</span>
       </div>
-      {trailing}
+      <div className="flex items-center gap-2">
+        {trailing}
+        {href && <ChevronRight size={16} strokeWidth={1.75} className="text-muted-soft" />}
+      </div>
     </div>
+  );
+
+  if (!href) return content;
+  return (
+    <Link href={href} className="block hover:bg-background/60 transition-colors">
+      {content}
+    </Link>
   );
 }
 
@@ -99,8 +114,13 @@ export default function ProfilePage() {
         <Row
           icon={Bell}
           label={t("profile.notifications")}
+          href={isAuthenticated ? "/profile/notifications" : undefined}
           trailing={
-            <span className="text-[12px] text-muted-soft">{t("common.comingSoon")}</span>
+            isAuthenticated ? (
+              <NotificationsBadge />
+            ) : (
+              <span className="text-[12px] text-muted-soft">{t("common.comingSoon")}</span>
+            )
           }
         />
       </div>

@@ -198,6 +198,45 @@ export const events = sqliteTable(
 );
 
 // ---------------------------------------------------------------------
+// 12. In-app notifications — a user-facing inbox, distinct from
+//     technical_log (diagnostic-only, 7-day retention, never
+//     user-facing). Created only when something the user has a
+//     persisted relationship with changes (a saved/favorited item goes
+//     unavailable, a saved Look's item goes unavailable, a referral
+//     signs up) — never a blast to every user. See
+//     lib/db/repositories/notifications.ts for reads/writes and
+//     lib/maintenance/cleanup.ts for its own 90-day retention.
+// ---------------------------------------------------------------------
+export const notifications = sqliteTable(
+  "notification",
+  {
+    id: id(),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(), // ITEM_UNAVAILABLE | LOOK_ITEM_UNAVAILABLE | REFERRAL | SYSTEM
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    entityType: text("entityType"), // "item" | "look" | null
+    entityId: text("entityId"),
+    // Idempotency key, scoped per user by the partial unique index
+    // below — e.g. "item_unavailable:{providerItemId}:{unavailableAtMs}"
+    // — so the SAME event (an item's availability check, a referral
+    // signup) can never generate more than one notification per user,
+    // no matter how many times the trigger path re-runs. Null for ad
+    // hoc SYSTEM notifications, which aren't deduped against each other.
+    dedupeKey: text("dedupeKey"),
+    readAt: integer("readAt", { mode: "timestamp_ms" }),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [
+    index("notification_user_created_idx").on(t.userId, t.createdAt),
+    index("notification_user_read_idx").on(t.userId, t.readAt),
+    uniqueIndex("notification_user_dedupe_uq")
+      .on(t.userId, t.dedupeKey)
+      .where(sql`${t.dedupeKey} is not null`),
+  ],
+);
+
+// ---------------------------------------------------------------------
 // 9. Sellers
 // ---------------------------------------------------------------------
 export const sellers = sqliteTable(

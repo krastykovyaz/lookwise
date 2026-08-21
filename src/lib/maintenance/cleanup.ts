@@ -24,6 +24,10 @@ const TECHNICAL_LOG_RETENTION_DAYS = 7;
 const REFERRAL_VISIT_RETENTION_DAYS = 90;
 // Matches the retention window documented in lib/products/availability.ts.
 const UNAVAILABLE_PRODUCT_RETENTION_DAYS = 7;
+// Notifications are a user-facing inbox, not a technical log — a much
+// longer window than technical_log's 7 days, matching referral_visit's
+// own "temporary but not throwaway" retention.
+const NOTIFICATION_RETENTION_DAYS = 90;
 
 // Section 14: "delete in batches... do not run a massive unbounded
 // DELETE on every request" — bounds both the size of any single
@@ -108,10 +112,29 @@ async function deleteExpiredUnavailableProducts(cutoff: Date): Promise<number> {
   return total;
 }
 
+async function deleteNotificationsBefore(cutoff: Date): Promise<number> {
+  let total = 0;
+  for (let batch = 0; batch < MAX_BATCHES_PER_TABLE; batch++) {
+    const rows = await db
+      .select({ id: schema.notifications.id })
+      .from(schema.notifications)
+      .where(lt(schema.notifications.createdAt, cutoff))
+      .limit(BATCH_SIZE);
+    if (rows.length === 0) break;
+    await db.delete(schema.notifications).where(
+      inArray(schema.notifications.id, rows.map((r) => r.id)),
+    );
+    total += rows.length;
+    if (rows.length < BATCH_SIZE) break;
+  }
+  return total;
+}
+
 export interface CleanupStats {
   technicalLogsDeleted: number;
   referralVisitsDeleted: number;
   unavailableProductsDeleted: number;
+  notificationsDeleted: number;
   ranAt: string;
 }
 
@@ -128,17 +151,21 @@ export async function runCleanup(): Promise<CleanupStats> {
   const unavailableProductCutoff = new Date(
     now.getTime() - UNAVAILABLE_PRODUCT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   );
+  const notificationCutoff = new Date(now.getTime() - NOTIFICATION_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
-  const [technicalLogsDeleted, referralVisitsDeleted, unavailableProductsDeleted] = await Promise.all([
-    deleteTechnicalLogsBefore(technicalLogCutoff),
-    deleteReferralVisitsBefore(referralVisitCutoff),
-    deleteExpiredUnavailableProducts(unavailableProductCutoff),
-  ]);
+  const [technicalLogsDeleted, referralVisitsDeleted, unavailableProductsDeleted, notificationsDeleted] =
+    await Promise.all([
+      deleteTechnicalLogsBefore(technicalLogCutoff),
+      deleteReferralVisitsBefore(referralVisitCutoff),
+      deleteExpiredUnavailableProducts(unavailableProductCutoff),
+      deleteNotificationsBefore(notificationCutoff),
+    ]);
 
   const stats: CleanupStats = {
     technicalLogsDeleted,
     referralVisitsDeleted,
     unavailableProductsDeleted,
+    notificationsDeleted,
     ranAt: now.toISOString(),
   };
 

@@ -75,6 +75,16 @@
     "aboutBody": "Lookwise est une application propulsée par l'IA pour trouver des biens d'occasion. Compass AI alimente la recherche — les résultats eBay Sandbox sont maintenant actifs, le paiement arrivera à une prochaine étape.",
     "version": "Version"
   },
+  "notifications": {
+    "title": "Notifications",
+    "emptyTitle": "Aucune notification pour l'instant",
+    "emptyHint": "Les mises à jour importantes sur vos Looks et Articles apparaîtront ici.",
+    "markAllRead": "Tout marquer comme lu",
+    "loadMore": "Charger plus",
+    "loadingMore": "Chargement...",
+    "errorTitle": "Impossible de charger les notifications",
+    "retry": "Réessayer"
+  },
   "results": {
     "foundPrefix": "J'ai trouvé",
     "foundOptions": "options.",
