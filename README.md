@@ -252,3 +252,79 @@ EBAY_ENV=production        # sandbox (default) | production
 Search also now retries with progressively looser constraints (drop condition
 filter, drop price ceiling, drop extra keywords) before reporting no results,
 and item lookup falls back to `get_item_by_legacy_id` for numeric eBay ids.
+
+## NOWPayments (crypto payments) — Step 1: config/connectivity foundation
+
+**No subscription or checkout flow exists yet.** This step only adds
+configuration, a connectivity check, and an inert IPN-signature utility
+for a later milestone to build the actual payment flow on top of.
+Nothing here is reachable from the app's UI or any API route.
+
+### What this added
+
+- `src/lib/payments/nowpayments/env.ts` — env resolution
+  (`getApiKey`/`getIpnSecret`/`apiBaseUrl`), `NowPaymentsConfigError`,
+  and `checkNowPaymentsConfig()` (presence-only, never reads/logs a
+  secret's actual value).
+- `src/lib/payments/nowpayments/client.ts` — a thin authenticated fetch
+  wrapper (mirrors `lib/ebay/client.ts`/`lib/ai/deepseek.ts`'s
+  pattern) with `getApiStatus()` and `getSupportedCurrencies()`.
+- `src/lib/payments/nowpayments/ipn.ts` — `verifyIpnSignature()`, a
+  pure HMAC-SHA512 webhook-signature check per NOWPayments' documented
+  IPN scheme. Not wired into any route — ready for whichever milestone
+  builds the actual webhook handler.
+- `src/instrumentation.ts` — a one-time, local-only (no network call)
+  startup log reporting whether NOWPayments is configured, and which
+  vars are missing if not. Runs on every boot; never logs secret
+  values.
+- `scripts/verify-nowpayments-connection.ts` (`npm run
+  check:nowpayments`) — a one-off **live** connectivity check (not
+  part of the `npm run verify` chain, since that suite never needs
+  real credentials or network access). Confirms the configured base
+  URL is reachable and that the API key actually authenticates
+  (`/v1/currencies` 401s on a bad key, so success here is real proof).
+
+### Environment variables required
+
+See `.env.example`. Server-side only — **never** `NEXT_PUBLIC_*`.
+
+```
+NOWPAYMENTS_API_KEY=        # from your NOWPayments account dashboard
+NOWPAYMENTS_IPN_SECRET=     # webhook signature secret — unused until a
+                             # webhook route exists, but validated as
+                             # "configured" already
+# NOWPAYMENTS_API_URL=      # optional; defaults to the sandbox API.
+                             # Set to https://api.nowpayments.io for
+                             # production, paired with a production key.
+```
+
+### Sandbox vs. production
+
+Sandbox (`https://api-sandbox.nowpayments.io`) and production
+(`https://api.nowpayments.io`) are **separate NOWPayments accounts**
+with separate API keys — not one key that works against both. Which
+one you're pointed at is entirely determined by `NOWPAYMENTS_API_URL`
+(mirrors `EBAY_API_BASE_URL`/`EBAY_ENV`'s pattern): unset defaults to
+sandbox, so a deployment can never start hitting real payment
+infrastructure just because this var was left unset. `apiBaseUrl()`
+accepts the value either with or without a trailing `/v1` — NOWPayments'
+own docs quote the base URL as `https://api.nowpayments.io/v1`, so
+that form is normalized rather than rejected.
+
+### NOWPayments API connection result
+
+Verified live against the credentials configured for this deployment:
+`GET /v1/status` returned `200 OK`, and `GET /v1/currencies`
+authenticated successfully (234 currencies returned) — confirming the
+configured `NOWPAYMENTS_API_KEY` is valid. The configured
+`NOWPAYMENTS_API_URL` resolved to the **production** API
+(`api.nowpayments.io`), not sandbox — worth confirming that's
+intentional before building the actual payment flow against it.
+
+### Explicitly not done in this step
+
+No payment/checkout/subscription flow, no webhook route, no database
+schema for payments/orders, no UI. `verifyIpnSignature()` exists but
+has no caller. Auth, Notifications, Explore, Search, Overview, Profile,
+eBay, Favorites, Saved, Recently Viewed, and referral logic were not
+touched.

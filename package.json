@@ -19,6 +19,7 @@
     "verify:session7": "tsx --conditions=react-server scripts/verify-session7.ts",
     "verify:activity": "tsx --conditions=react-server scripts/verify-activity.ts",
     "verify:notifications": "tsx --conditions=react-server scripts/verify-notifications.ts",
+    "check:nowpayments": "tsx --conditions=react-server scripts/verify-nowpayments-connection.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:push": "drizzle-kit push",
