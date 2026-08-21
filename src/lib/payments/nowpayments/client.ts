@@ -21,17 +21,25 @@ function safeUpstreamMessage(body: string): string {
   return body.replace(/\s+/g, " ").slice(0, 300);
 }
 
-async function nowPaymentsFetch<T>(path: string, { auth = true }: { auth?: boolean } = {}): Promise<T> {
+async function nowPaymentsFetch<T>(
+  path: string,
+  { auth = true, method = "GET", body }: { auth?: boolean; method?: "GET" | "POST"; body?: unknown } = {},
+): Promise<T> {
   const url = `${apiBaseUrl()}${path}`;
   const headers: Record<string, string> = {};
   // getApiKey() throws NowPaymentsConfigError before any request is
   // made if the key is missing — never sends an unauthenticated
   // request and calls it "checked".
   if (auth) headers["x-api-key"] = getApiKey();
+  if (body !== undefined) headers["Content-Type"] = "application/json";
 
   let response: Response;
   try {
-    response = await fetch(url, { headers });
+    response = await fetch(url, {
+      method,
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
   } catch (err) {
     console.error(`[Compass] NOWPayments error: network (${(err as Error).message})`);
     throw new NowPaymentsApiError(`Could not reach ${envLabel()}: ${(err as Error).message}`);
@@ -67,4 +75,40 @@ export interface NowPaymentsCurrenciesResponse {
  *  that the API is reachable. */
 export async function getSupportedCurrencies(): Promise<NowPaymentsCurrenciesResponse> {
   return nowPaymentsFetch<NowPaymentsCurrenciesResponse>("/v1/currencies");
+}
+
+export interface CreatePaymentInput {
+  price_amount: number;
+  price_currency: string;
+  pay_currency?: string;
+  order_id?: string;
+  order_description?: string;
+  ipn_callback_url?: string;
+}
+
+export interface CreatePaymentResponse {
+  payment_id: string;
+  payment_status: string;
+  pay_address: string;
+  price_amount: number;
+  price_currency: string;
+  pay_amount: number;
+  pay_currency: string;
+  order_id: string | null;
+  order_description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /v1/payment — creates a real NOWPayments payment (money moves
+ *  once a customer actually pays the returned pay_address; creating the
+ *  payment object itself does not). Every field the caller supplies is
+ *  sent as-is — this function has no business logic of its own about
+ *  what price/currency to use; see
+ *  lib/payments/nowpayments/checkout.ts for that (section 2: "never
+ *  trust price/currency from the browser" is enforced there, by never
+ *  accepting them as parameters from a request in the first place, not
+ *  here). */
+export async function createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
+  return nowPaymentsFetch<CreatePaymentResponse>("/v1/payment", { method: "POST", body: input });
 }
