@@ -1,0 +1,346 @@
+{
+  "nav": {
+    "buyer": "AI Buyer",
+    "discover": "Discover",
+    "saved": "Saved",
+    "profile": "Profile",
+    "overview": "Overview",
+    "explore": "Explore",
+    "search": "Search"
+  },
+  "buyer": {
+    "brand": "Lookwise",
+    "tagline": "AI buyer for pre-owned.",
+    "headline": "What do you want to buy?",
+    "subheadline": "Tell Compass AI. I'll find the best used options for you.",
+    "placeholder": "Find vintage Nike sneakers under $150...",
+    "examplesLabel": "Try an example",
+    "examples": [
+      "Find vintage Nike sneakers under $150",
+      "Looking for a good leather jacket",
+      "Find a used Leica camera"
+    ],
+    "loading1": "Understanding your request...",
+    "loading2": "Finding the best options...",
+    "loading3": "Comparing results...",
+    "errorEmptyTitle": "Type what you're looking for",
+    "errorEmptyBody": "Compass AI needs a request before it can search.",
+    "errorAiTitle": "Compass AI couldn't understand the request",
+    "errorAiBody": "Try rephrasing it — a bit more detail helps.",
+    "errorSearchTitle": "Something went wrong while searching eBay",
+    "errorSearchBody": "Please try again.",
+    "retry": "Try again",
+    "errorAiConfigTitle": "AI search isn't configured",
+    "errorAiConfigBody": "The DeepSeek API key is missing on the server.",
+    "errorAiApiTitle": "The AI service didn't respond",
+    "errorAiApiBody": "DeepSeek returned an error. Please try again in a moment.",
+    "errorEbayConfigTitle": "eBay search isn't configured",
+    "errorEbayConfigBody": "The eBay Sandbox credentials are missing on the server.",
+    "errorEbayAuthTitle": "Couldn't sign in to eBay Sandbox",
+    "errorEbayAuthBody": "eBay rejected the credentials. Please try again shortly.",
+    "or": "or",
+    "voiceStart": "Start voice input",
+    "voiceStop": "Stop voice input",
+    "voiceListening": "Listening...",
+    "voiceDenied": "Microphone access denied",
+    "voiceError": "Voice input didn't work — try again",
+    "voiceUnsupported": "Voice input isn't supported in this browser"
+  },
+  "discover": {
+    "title": "Discover",
+    "subtitle": "A preview of what Compass AI finds",
+    "placeholderNotice": "Static preview items — not connected to eBay yet."
+  },
+  "saved": {
+    "title": "Saved",
+    "products": "Saved Products",
+    "looks": "Saved Looks",
+    "noProducts": "No saved products yet",
+    "noProductsHint": "Tap the bookmark on a product to save it here.",
+    "noLooks": "No saved looks yet",
+    "noLooksHint": "Tap the bookmark on a look to save it here.",
+    "error": "Couldn't load this",
+    "errorHint": "Something went wrong reaching the server. Try again shortly."
+  },
+  "profile": {
+    "title": "Profile",
+    "guestName": "Guest",
+    "guestHint": "Sign in to save your profile",
+    "sectionPreferences": "Preferences",
+    "language": "Language",
+    "currency": "Currency",
+    "notifications": "Notifications",
+    "sectionAbout": "About",
+    "about": "About Lookwise",
+    "aboutBody": "Lookwise is an AI-powered app for finding pre-owned goods. Compass AI powers search, and eBay Sandbox results are now live — checkout and orders arrive in a later milestone.",
+    "version": "Version"
+  },
+  "results": {
+    "foundPrefix": "I found",
+    "foundOptions": "options.",
+    "bestPrefix": "Here are the",
+    "bestSuffix": "best.",
+    "rankedBy": "Ranked by value, condition and relevance.",
+    "showMore": "Show more options",
+    "loadingMore": "Loading more...",
+    "noResultsTitle": "No matching items in eBay Sandbox",
+    "noResultsBody": "The Sandbox catalogue is a small synthetic test set, so most real searches return nothing.",
+    "noResultsHint": "Set EBAY_ENV=production in your .env to search real eBay inventory, or try a broader search.",
+    "errorTitle": "Something went wrong while searching eBay",
+    "backToSearch": "Back to search",
+    "dealScore": "Deal Score"
+  },
+  "product": {
+    "condition": "Condition",
+    "brand": "Brand",
+    "seller": "Seller",
+    "feedback": "Feedback",
+    "location": "Item location",
+    "shipping": "Shipping",
+    "estimatedDelivery": "Estimated delivery",
+    "returns": "Returns",
+    "askCompass": "Ask Compass AI",
+    "dealScore": "Deal Score",
+    "viewOnEbay": "View on eBay",
+    "insightsTitle": "Why this is interesting",
+    "insightGoodPrice": "Good price for this result set",
+    "insightStrongSeller": "Strong seller feedback",
+    "insightCheckPhotos": "Limited photos — check listing closely",
+    "loading": "Loading item...",
+    "notFoundTitle": "Item not found",
+    "notFoundBody": "This listing isn't available in eBay Sandbox anymore.",
+    "loadErrorTitle": "Couldn't load this item",
+    "loadErrorBody": "Something went wrong while fetching it from eBay.",
+    "sold": "Sold",
+    "unavailable": "No longer available"
+  },
+  "ask": {
+    "title": "Ask Compass AI",
+    "subtitle": "Questions about this item",
+    "placeholder": "Ask anything...",
+    "prompt1": "Is this a good deal?",
+    "prompt2": "Is the condition acceptable?",
+    "prompt3": "Would you buy this?",
+    "prompt4": "Are there better alternatives?",
+    "thinking": "Thinking...",
+    "error": "Compass AI couldn't answer that just now — please try again."
+  },
+  "common": {
+    "save": "Save",
+    "saved": "Saved",
+    "comingSoon": "Coming soon",
+    "back": "Back"
+  },
+  "share": {
+    "button": "Share",
+    "copied": "Link copied"
+  },
+  "look": {
+    "sectionTitle": "Your Style",
+    "buildALook": "Build a Look",
+    "save": "Save this look",
+    "unsave": "Remove from saved looks",
+    "profileEmptyTitle": "No style profile yet",
+    "profileEmptyBody": "Build a look to get personalized outfit picks later.",
+    "editProfile": "Edit",
+    "budgetLabel": "Budget",
+    "locationLabel": "Location",
+    "step1Title": "Which feels most like you?",
+    "step1Body": "Pick as many as you like — this helps LookAdviser understand your style.",
+    "step2Title": "What's your typical budget for a complete look?",
+    "step2Body": "This is a general guide, not a hard limit for every search.",
+    "step3Title": "Where are you based?",
+    "step3Body": "Location is optional. Allow browser location to use your coordinates and timezone for weather and time context.",
+    "helpMeChoose": "Not sure? Help me choose",
+    "helpMeChooseTip": "Try picking 2–3 that describe how you usually dress — you can always change these later.",
+    "useMyLocation": "Use my location",
+    "locating": "Locating...",
+    "locationDenied": "Couldn't get your location — you can still type a city below.",
+    "cityLabel": "City",
+    "cityPlaceholder": "e.g. Luxembourg",
+    "skip": "Skip",
+    "continue": "Continue",
+    "finish": "Save",
+    "archetype": {
+      "minimalist": {
+        "label": "Minimalist",
+        "description": "Simple, clean, understated."
+      },
+      "street": {
+        "label": "Street",
+        "description": "Sneakers, relaxed silhouettes, streetwear."
+      },
+      "smart_casual": {
+        "label": "Smart Casual",
+        "description": "Polished but relaxed."
+      },
+      "classic": {
+        "label": "Classic",
+        "description": "Timeless, traditional pieces."
+      },
+      "vintage": {
+        "label": "Vintage",
+        "description": "Retro-inspired and distinctive pieces."
+      },
+      "functional": {
+        "label": "Functional",
+        "description": "Technical, practical, utility-focused."
+      },
+      "sporty": {
+        "label": "Sporty",
+        "description": "Athletic and athleisure-oriented."
+      },
+      "experimental": {
+        "label": "Experimental",
+        "description": "Unusual silhouettes, colors, combinations."
+      }
+    },
+    "budget": {
+      "under_100": "Under €100",
+      "100_200": "€100–200",
+      "200_400": "€200–400",
+      "400_700": "€400–700",
+      "700_plus": "€700+",
+      "no_preference": "No preference"
+    },
+    "pageTitle": "Build a Look",
+    "occasionTitle": "What are you dressing for?",
+    "vibeTitle": "What's the vibe?",
+    "freeTextTitle": "Anything else?",
+    "freeTextPlaceholder": "e.g. Going to dinner with friends",
+    "createMyLook": "Create my look",
+    "creating": "Creating your look...",
+    "generationComingSoon": "Look generation is coming next. We've saved what you're dressing for — the AI stylist that turns it into real outfits is the next milestone.",
+    "generationError": "Something went wrong. Please try again.",
+    "locationFoundNote": "Current coordinates: {coords}",
+    "yourStylePrefix": "Your Style:",
+    "occasion": {
+      "everyday": "Everyday",
+      "work": "Work",
+      "dinner": "Dinner",
+      "date": "Date",
+      "travel": "Travel",
+      "party": "Party",
+      "event": "Event",
+      "sport": "Sport",
+      "something_else": "Something else"
+    },
+    "vibe": {
+      "relaxed": "Relaxed",
+      "smart": "Smart",
+      "minimal": "Minimal",
+      "bold": "Bold",
+      "sporty": "Sporty",
+      "casual": "Casual",
+      "dont_care": "Don't care"
+    },
+    "optional": "optional",
+    "activityTitle": "What are you doing?",
+    "locationUnavailable": "Location not set",
+    "locationPermissionHint": "Location access is optional. Your saved location will be used when available.",
+    "yourLook": "Your Look",
+    "activity": {
+      "walking": "Walking",
+      "office": "Office",
+      "meeting_friends": "Meeting friends",
+      "travel": "Travel",
+      "shopping": "Shopping",
+      "outdoor": "Outdoors",
+      "sport": "Sport",
+      "dining": "Dining"
+    },
+    "rainChance": "rain",
+    "weather": {
+      "clear": "Clear",
+      "clouds": "Cloudy",
+      "rain": "Rain",
+      "snow": "Snow",
+      "storm": "Storm",
+      "fog": "Fog",
+      "unknown": "Weather unavailable"
+    },
+    "saving": "Saving...",
+    "intentTitle": "What are you doing?",
+    "intent": {
+      "everyday": "Everyday",
+      "work_office": "Work / Office",
+      "walking": "Walking",
+      "meeting_friends": "Meeting friends",
+      "dinner_restaurant": "Dinner / Restaurant",
+      "date": "Date",
+      "party": "Party",
+      "event": "Event",
+      "travel": "Travel",
+      "shopping": "Shopping",
+      "outdoors": "Outdoors",
+      "sport": "Sport",
+      "something_else": "Something else"
+    },
+    "genderTitle": "What kind of look are you interested in?",
+    "gender": {
+      "women": "Women's",
+      "men": "Men's"
+    },
+    "whyItWorks": "Why it works"
+  },
+  "explore": {
+    "title": "Explore",
+    "subtitle": "Fashion picked for you",
+    "role": {
+      "top": "Top",
+      "bottom": "Bottom",
+      "outerwear": "Outerwear",
+      "footwear": "Footwear",
+      "accessory": "Accessory",
+      "other": "Pick"
+    },
+    "action": {
+      "change": "Change",
+      "like": "Like this look",
+      "dislike": "Not for me",
+      "open": "Open",
+      "save": "Save"
+    },
+    "emptyTitle": "Nothing new right now.",
+    "emptyHint": "Check back soon, or refresh to try again.",
+    "errorTitle": "Couldn't load Explore.",
+    "errorHint": "Something went wrong reaching the marketplace.",
+    "refresh": "Refresh",
+    "caughtUp": "You're all caught up."
+  },
+  "overview": {
+    "title": "Overview",
+    "subtitle": "Your looks and recently viewed items",
+    "noProductPreviews": "No product previews yet",
+    "look": "Look",
+    "open": "Open",
+    "favorites": "Favorites",
+    "noFavorites": "No favorites yet",
+    "noFavoritesDescription": "Save items you love and they will appear here.",
+    "recentlyViewed": "Recently Viewed",
+    "noRecentlyViewed": "Nothing viewed yet",
+    "noRecentlyViewedDescription": "Looks and products you open will show up here.",
+    "recentlyViewedError": "Couldn't load Recently Viewed",
+    "recentlyViewedErrorHint": "Something went wrong reaching the server. Try again shortly.",
+    "exploreLink": "Explore",
+    "savedLooks": "Saved Looks",
+    "noSavedLooks": "No saved looks yet",
+    "noSavedLooksDescription": "Tap the bookmark on a look in Explore to save it here."
+  },
+  "auth": {
+    "signInTitle": "Sign in to Lookwise",
+    "signInSubtitle": "Save your style profile and picks across devices.",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithEmail": "Continue with email",
+    "emailPlaceholder": "you@example.com",
+    "sendLink": "Send sign-in link",
+    "orDivider": "or",
+    "checkEmailTitle": "Check your email",
+    "checkEmailBody": "We've sent a secure sign-in link to your email address. It expires in 15 minutes.",
+    "backToSignIn": "Back to sign in",
+    "signOut": "Sign out",
+    "signIn": "Sign in",
+    "signedInAs": "Signed in as",
+    "genericError": "Something went wrong. Please try again."
+  }
+}

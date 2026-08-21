@@ -1,0 +1,53 @@
+{
+  "name": "compass-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "verify:filters": "tsx scripts/verify-filters.ts",
+    "verify:product-id": "tsx --conditions=react-server scripts/verify-product-id.ts",
+    "verify:images": "tsx --conditions=react-server scripts/verify-images.ts",
+    "verify": "npm run verify:filters && npm run verify:product-id && npm run verify:images && npm run verify:recommendation && npm run verify:explore && npm run verify:look && npm run verify:auth && npm run verify:signals && npm run verify:session7 && npm run verify:activity",
+    "verify:recommendation": "tsx --conditions=react-server scripts/verify-recommendation.ts",
+    "verify:explore": "tsx --conditions=react-server scripts/verify-explore-pagination.ts",
+    "verify:look": "tsx --conditions=react-server scripts/verify-look.ts",
+    "verify:auth": "tsx --conditions=react-server scripts/verify-auth.ts",
+    "verify:signals": "tsx --conditions=react-server scripts/verify-signals.ts",
+    "verify:session7": "tsx --conditions=react-server scripts/verify-session7.ts",
+    "verify:activity": "tsx --conditions=react-server scripts/verify-activity.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/lib/db/migrate.ts",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx src/lib/db/seed.ts",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@auth/drizzle-adapter": "^1.11.3",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.31.0",
+    "next": "16.3.0",
+    "next-auth": "^5.0.0-beta.32",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "resend": "^6.20.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.12",
+    "typescript": "^5"
+  }
+}

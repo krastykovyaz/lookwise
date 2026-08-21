@@ -1,0 +1,1 @@
+ALTER TABLE `style_profile` ADD `currency` text;

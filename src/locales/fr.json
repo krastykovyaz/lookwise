@@ -1,0 +1,346 @@
+{
+  "nav": {
+    "buyer": "Acheteur IA",
+    "discover": "Découvrir",
+    "saved": "Favoris",
+    "profile": "Profil",
+    "overview": "Aperçu",
+    "explore": "Explorer",
+    "search": "Recherche"
+  },
+  "buyer": {
+    "brand": "Lookwise",
+    "tagline": "Acheteur IA pour l'occasion.",
+    "headline": "Que voulez-vous acheter ?",
+    "subheadline": "Dites-le à Compass AI. Je trouverai les meilleures options d'occasion.",
+    "placeholder": "Trouve des Nike vintage à moins de 150 $...",
+    "examplesLabel": "Essayer un exemple",
+    "examples": [
+      "Trouve des Nike vintage à moins de 150 $",
+      "Je cherche une bonne veste en cuir",
+      "Trouve un appareil Leica d'occasion"
+    ],
+    "loading1": "Analyse de votre demande...",
+    "loading2": "Recherche des meilleures options...",
+    "loading3": "Comparaison des résultats...",
+    "errorEmptyTitle": "Indiquez ce que vous cherchez",
+    "errorEmptyBody": "Compass AI a besoin d'une demande pour lancer la recherche.",
+    "errorAiTitle": "Compass AI n'a pas compris la demande",
+    "errorAiBody": "Essayez de la reformuler — un peu plus de détails aide.",
+    "errorSearchTitle": "Un problème est survenu lors de la recherche sur eBay",
+    "errorSearchBody": "Veuillez réessayer.",
+    "retry": "Réessayer",
+    "errorAiConfigTitle": "La recherche IA n'est pas configurée",
+    "errorAiConfigBody": "La clé API DeepSeek est absente côté serveur.",
+    "errorAiApiTitle": "Le service IA n'a pas répondu",
+    "errorAiApiBody": "DeepSeek a renvoyé une erreur. Réessayez dans un instant.",
+    "errorEbayConfigTitle": "La recherche eBay n'est pas configurée",
+    "errorEbayConfigBody": "Les identifiants eBay Sandbox sont absents côté serveur.",
+    "errorEbayAuthTitle": "Connexion à eBay Sandbox impossible",
+    "errorEbayAuthBody": "eBay a refusé les identifiants. Réessayez sous peu.",
+    "or": "ou",
+    "voiceStart": "Démarrer la saisie vocale",
+    "voiceStop": "Arrêter la saisie vocale",
+    "voiceListening": "Écoute en cours...",
+    "voiceDenied": "Accès au microphone refusé",
+    "voiceError": "La saisie vocale n'a pas fonctionné — réessayez",
+    "voiceUnsupported": "La saisie vocale n'est pas prise en charge par ce navigateur"
+  },
+  "discover": {
+    "title": "Découvrir",
+    "subtitle": "Un aperçu de ce que Compass AI trouvera",
+    "placeholderNotice": "Éléments statiques — pas encore connectés à eBay."
+  },
+  "saved": {
+    "title": "Favoris",
+    "products": "Produits enregistrés",
+    "looks": "Looks enregistrés",
+    "noProducts": "Aucun produit enregistré",
+    "noProductsHint": "Appuyez sur le signet d'un produit pour l'enregistrer ici.",
+    "noLooks": "Aucun look enregistré",
+    "noLooksHint": "Appuyez sur le signet d'un look pour l'enregistrer ici.",
+    "error": "Impossible de charger",
+    "errorHint": "Une erreur est survenue côté serveur. Réessayez dans un instant."
+  },
+  "profile": {
+    "title": "Profil",
+    "guestName": "Invité",
+    "guestHint": "Connectez-vous pour enregistrer votre profil",
+    "sectionPreferences": "Préférences",
+    "language": "Langue",
+    "currency": "Devise",
+    "notifications": "Notifications",
+    "sectionAbout": "À propos",
+    "about": "À propos de Lookwise",
+    "aboutBody": "Lookwise est une application propulsée par l'IA pour trouver des biens d'occasion. Compass AI alimente la recherche — les résultats eBay Sandbox sont maintenant actifs, le paiement arrivera à une prochaine étape.",
+    "version": "Version"
+  },
+  "results": {
+    "foundPrefix": "J'ai trouvé",
+    "foundOptions": "options.",
+    "bestPrefix": "Voici les",
+    "bestSuffix": "meilleures.",
+    "rankedBy": "Classées par valeur, état et pertinence.",
+    "showMore": "Afficher plus d'options",
+    "loadingMore": "Chargement...",
+    "noResultsTitle": "Aucun article correspondant dans le Sandbox eBay",
+    "noResultsBody": "Le catalogue Sandbox est un petit jeu de test synthétique : la plupart des recherches réelles ne renvoient rien.",
+    "noResultsHint": "Définissez EBAY_ENV=production dans votre .env pour rechercher le vrai catalogue eBay, ou élargissez votre recherche.",
+    "errorTitle": "Un problème est survenu lors de la recherche sur eBay",
+    "backToSearch": "Retour à la recherche",
+    "dealScore": "Score de l'offre"
+  },
+  "product": {
+    "condition": "État",
+    "brand": "Marque",
+    "seller": "Vendeur",
+    "feedback": "Évaluations",
+    "location": "Emplacement de l'article",
+    "shipping": "Livraison",
+    "estimatedDelivery": "Livraison estimée",
+    "returns": "Retours",
+    "askCompass": "Demander à Compass AI",
+    "dealScore": "Score de l'offre",
+    "viewOnEbay": "Voir sur eBay",
+    "insightsTitle": "Pourquoi c'est intéressant",
+    "insightGoodPrice": "Bon prix parmi ces résultats",
+    "insightStrongSeller": "Bonne évaluation du vendeur",
+    "insightCheckPhotos": "Peu de photos — vérifiez l'annonce attentivement",
+    "loading": "Chargement de l'article...",
+    "notFoundTitle": "Article introuvable",
+    "notFoundBody": "Cette annonce n'est plus disponible sur eBay Sandbox.",
+    "loadErrorTitle": "Impossible de charger cet article",
+    "loadErrorBody": "Un problème est survenu lors de la récupération depuis eBay.",
+    "sold": "Vendu",
+    "unavailable": "Plus disponible"
+  },
+  "ask": {
+    "title": "Demander à Compass AI",
+    "subtitle": "Questions sur cet article",
+    "placeholder": "Posez une question...",
+    "prompt1": "Est-ce une bonne affaire ?",
+    "prompt2": "L'état est-il acceptable ?",
+    "prompt3": "Achèteriez-vous cet article ?",
+    "prompt4": "Y a-t-il de meilleures alternatives ?",
+    "thinking": "Réflexion...",
+    "error": "Compass AI n'a pas pu répondre pour l'instant — veuillez réessayer."
+  },
+  "common": {
+    "save": "Enregistrer",
+    "saved": "Enregistré",
+    "comingSoon": "Bientôt disponible",
+    "back": "Retour"
+  },
+  "share": {
+    "button": "Partager",
+    "copied": "Lien copié"
+  },
+  "look": {
+    "sectionTitle": "Votre style",
+    "buildALook": "Composer une tenue",
+    "save": "Enregistrer ce look",
+    "unsave": "Retirer des looks enregistrés",
+    "profileEmptyTitle": "Aucun profil de style pour l'instant",
+    "profileEmptyBody": "Composez une tenue pour recevoir des suggestions personnalisées plus tard.",
+    "editProfile": "Modifier",
+    "budgetLabel": "Budget",
+    "locationLabel": "Localisation",
+    "step1Title": "Qu'est-ce qui vous ressemble le plus ?",
+    "step1Body": "Choisissez-en autant que vous voulez — cela aide LookAdviser à comprendre votre style.",
+    "step2Title": "Quel est votre budget habituel pour une tenue complète ?",
+    "step2Body": "C'est une indication générale, pas une limite stricte pour chaque recherche.",
+    "step3Title": "Où êtes-vous basé·e ?",
+    "step3Body": "La localisation est facultative. Autorisez le navigateur à utiliser vos coordonnées et votre fuseau horaire pour la météo et le contexte temporel.",
+    "helpMeChoose": "Pas sûr·e ? Aidez-moi à choisir",
+    "helpMeChooseTip": "Essayez d'en choisir 2 à 3 qui décrivent votre façon habituelle de vous habiller — vous pourrez toujours les changer plus tard.",
+    "useMyLocation": "Utiliser ma position",
+    "locating": "Localisation en cours...",
+    "locationDenied": "Impossible d'obtenir votre position — vous pouvez saisir une ville ci-dessous.",
+    "cityLabel": "Ville",
+    "cityPlaceholder": "ex. Luxembourg",
+    "skip": "Passer",
+    "continue": "Continuer",
+    "finish": "Enregistrer",
+    "archetype": {
+      "minimalist": {
+        "label": "Minimaliste",
+        "description": "Simple, épuré, sobre."
+      },
+      "street": {
+        "label": "Street",
+        "description": "Sneakers, silhouettes amples, streetwear contemporain."
+      },
+      "smart_casual": {
+        "label": "Smart Casual",
+        "description": "Soigné mais décontracté."
+      },
+      "classic": {
+        "label": "Classique",
+        "description": "Pièces intemporelles et traditionnelles."
+      },
+      "vintage": {
+        "label": "Vintage",
+        "description": "Inspiré du rétro, pièces distinctives."
+      },
+      "functional": {
+        "label": "Fonctionnel",
+        "description": "Technique, pratique, orienté utilité."
+      },
+      "sporty": {
+        "label": "Sportif",
+        "description": "Athlétique et athleisure."
+      },
+      "experimental": {
+        "label": "Expérimental",
+        "description": "Silhouettes, couleurs et combinaisons inhabituelles."
+      }
+    },
+    "budget": {
+      "under_100": "Moins de 100 €",
+      "100_200": "100–200 €",
+      "200_400": "200–400 €",
+      "400_700": "400–700 €",
+      "700_plus": "700 €+",
+      "no_preference": "Pas de préférence"
+    },
+    "pageTitle": "Composer une tenue",
+    "occasionTitle": "Pour quelle occasion vous habillez-vous ?",
+    "vibeTitle": "Quelle ambiance ?",
+    "freeTextTitle": "Autre chose ?",
+    "freeTextPlaceholder": "ex. Je vais dîner avec des amis",
+    "createMyLook": "Créer ma tenue",
+    "creating": "Création de votre tenue...",
+    "generationComingSoon": "La génération de tenues arrive à la prochaine étape. Nous avons enregistré votre contexte — le styliste IA qui le transformera en tenues réelles sera ajouté ensuite.",
+    "generationError": "Une erreur s'est produite. Veuillez réessayer.",
+    "locationFoundNote": "Coordonnées actuelles : {coords}",
+    "yourStylePrefix": "Votre style :",
+    "occasion": {
+      "everyday": "Quotidien",
+      "work": "Travail",
+      "dinner": "Dîner",
+      "date": "Rendez-vous",
+      "travel": "Voyage",
+      "party": "Soirée",
+      "event": "Événement",
+      "sport": "Sport",
+      "something_else": "Autre chose"
+    },
+    "vibe": {
+      "relaxed": "Décontracté",
+      "smart": "Chic",
+      "minimal": "Minimal",
+      "bold": "Audacieux",
+      "sporty": "Sportif",
+      "casual": "Casual",
+      "dont_care": "Peu importe"
+    },
+    "optional": "facultatif",
+    "activityTitle": "Que faites-vous ?",
+    "locationUnavailable": "Localisation non définie",
+    "locationPermissionHint": "L’accès à la localisation est facultatif. Votre localisation enregistrée sera utilisée si disponible.",
+    "yourLook": "Votre tenue",
+    "activity": {
+      "walking": "Promenade",
+      "office": "Bureau",
+      "meeting_friends": "Amis",
+      "travel": "Voyage",
+      "shopping": "Shopping",
+      "outdoor": "Extérieur",
+      "sport": "Sport",
+      "dining": "Dîner"
+    },
+    "rainChance": "pluie",
+    "weather": {
+      "clear": "Dégagé",
+      "clouds": "Nuageux",
+      "rain": "Pluie",
+      "snow": "Neige",
+      "storm": "Orage",
+      "fog": "Brouillard",
+      "unknown": "Météo indisponible"
+    },
+    "saving": "Enregistrement...",
+    "intentTitle": "Que prévoyez-vous de faire ?",
+    "intent": {
+      "everyday": "Quotidien",
+      "work_office": "Travail / bureau",
+      "walking": "Promenade",
+      "meeting_friends": "Amis",
+      "dinner_restaurant": "Dîner / restaurant",
+      "date": "Rendez-vous",
+      "party": "Fête",
+      "event": "Événement",
+      "travel": "Voyage",
+      "shopping": "Shopping",
+      "outdoors": "Extérieur",
+      "sport": "Sport",
+      "something_else": "Autre"
+    },
+    "genderTitle": "Quel type de look vous intéresse ?",
+    "gender": {
+      "women": "Femme",
+      "men": "Homme"
+    },
+    "whyItWorks": "Pourquoi ça fonctionne"
+  },
+  "explore": {
+    "title": "Explorer",
+    "subtitle": "Une sélection pensée pour vous",
+    "role": {
+      "top": "Haut",
+      "bottom": "Bas",
+      "outerwear": "Manteau",
+      "footwear": "Chaussures",
+      "accessory": "Accessoire",
+      "other": "Pièce"
+    },
+    "action": {
+      "change": "Changer",
+      "like": "J'aime",
+      "dislike": "Pas pour moi",
+      "open": "Ouvrir",
+      "save": "Enregistrer"
+    },
+    "emptyTitle": "Rien de nouveau pour l'instant.",
+    "emptyHint": "Revenez bientôt ou actualisez la sélection.",
+    "errorTitle": "Impossible de charger Explorer.",
+    "errorHint": "Un problème est survenu avec la marketplace.",
+    "refresh": "Actualiser",
+    "caughtUp": "Vous avez tout vu."
+  },
+  "overview": {
+    "title": "Aperçu",
+    "subtitle": "Vos looks et les articles récemment consultés",
+    "noProductPreviews": "Aucun aperçu de produit pour le moment",
+    "look": "Look",
+    "open": "Ouvrir",
+    "favorites": "Favoris",
+    "noFavorites": "Aucun favori pour le moment",
+    "noFavoritesDescription": "Enregistrez les articles que vous aimez pour les retrouver ici.",
+    "recentlyViewed": "Récemment consultés",
+    "noRecentlyViewed": "Rien de consulté pour le moment",
+    "noRecentlyViewedDescription": "Les looks et produits que vous ouvrez apparaîtront ici.",
+    "recentlyViewedError": "Impossible de charger les vus récemment",
+    "recentlyViewedErrorHint": "Une erreur est survenue côté serveur. Réessayez dans un instant.",
+    "exploreLink": "Explorer",
+    "savedLooks": "Looks enregistrés",
+    "noSavedLooks": "Aucun look enregistré pour le moment",
+    "noSavedLooksDescription": "Appuyez sur le signet d'un look dans Explore pour l'enregistrer ici."
+  },
+  "auth": {
+    "signInTitle": "Se connecter à Lookwise",
+    "signInSubtitle": "Enregistrez votre profil de style et vos sélections sur tous vos appareils.",
+    "continueWithGoogle": "Continuer avec Google",
+    "continueWithEmail": "Continuer avec l'email",
+    "emailPlaceholder": "vous@exemple.com",
+    "sendLink": "Envoyer le lien de connexion",
+    "orDivider": "ou",
+    "checkEmailTitle": "Vérifiez votre email",
+    "checkEmailBody": "Nous avons envoyé un lien de connexion sécurisé à votre adresse email. Il expire dans 15 minutes.",
+    "backToSignIn": "Retour à la connexion",
+    "signOut": "Se déconnecter",
+    "signIn": "Se connecter",
+    "signedInAs": "Connecté en tant que",
+    "genericError": "Une erreur est survenue. Veuillez réessayer."
+  }
+}
