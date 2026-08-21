@@ -253,7 +253,7 @@ async function main() {
         id: fakeInvoiceId,
         order_id: (input as { order_id: string }).order_id,
         order_description: "Lookwise subscription",
-        price_amount: 1,
+        price_amount: SUBSCRIPTION_PRICE_AMOUNT,
         price_currency: "eur",
         pay_currency: "usdttrc20",
         invoice_url: fakeInvoiceUrl,
@@ -280,10 +280,9 @@ async function main() {
   ].sort().join(","));
 
   check(
-    "€1 price cannot be overridden — the actual NOWPayments call always used the fixed constants",
+    "fixed price cannot be overridden — the actual NOWPayments call always used the fixed constants",
     (capturedCreateInput as { price_amount: number })?.price_amount === SUBSCRIPTION_PRICE_AMOUNT &&
       (capturedCreateInput as { price_currency: string })?.price_currency === SUBSCRIPTION_PRICE_CURRENCY &&
-      SUBSCRIPTION_PRICE_AMOUNT === 1 &&
       SUBSCRIPTION_PRICE_CURRENCY === "eur",
   );
   check(
@@ -294,7 +293,7 @@ async function main() {
 
   const [persisted] = await db.select().from(schema.payments).where(eq(schema.payments.userId, userA.id));
   check("payment row persisted with the userId", persisted?.userId === userA.id);
-  check("payment row persisted with fixed price fields", persisted?.priceAmount === 1 && persisted?.priceCurrency === "eur");
+  check("payment row persisted with fixed price fields", persisted?.priceAmount === SUBSCRIPTION_PRICE_AMOUNT && persisted?.priceCurrency === "eur");
   check("payment row status matches the created payment's initial status", persisted?.status === "waiting");
   check("payment row persisted the checkout URL", persisted?.paymentUrl === fakeInvoiceUrl);
   const orderIdForA = persisted!.orderId;
