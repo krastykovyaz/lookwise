@@ -198,6 +198,28 @@ export default function SubscriptionPage() {
               </>
             )}
 
+            {viewState.kind === "subscription_expired" && (
+              <>
+                <p className="mt-3 text-[16px] font-semibold text-foreground">{t("subscription.premiumName")}</p>
+                <p className="mt-1 inline-flex items-center gap-1.5 text-[13px] font-medium text-warning">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                  {t("subscription.expiredLabel")}
+                </p>
+                <p className="mt-2 text-[13px] text-muted">
+                  {t("subscription.expiredOn")} {formatDate(viewState.expiresAt, locale)}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSubscribe}
+                  disabled={isCreating}
+                  className="mt-4 w-full rounded-full bg-foreground py-3 text-[14px] font-medium text-background disabled:opacity-60"
+                >
+                  {isCreating ? t("subscription.redirecting") : t("subscription.renewButton")}
+                </button>
+                {createError && <p className="mt-2 text-[12.5px] text-warning">{t("subscription.createError")}</p>}
+              </>
+            )}
+
             {viewState.kind === "none" && (
               <>
                 <p className="mt-3 text-[16px] font-semibold text-foreground">{t("subscription.productName")}</p>

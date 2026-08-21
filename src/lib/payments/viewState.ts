@@ -10,7 +10,10 @@ export interface SubscriptionStatusPayment {
 }
 
 export interface SubscriptionStatusResponse {
-  subscription: { status: string; startedAt: string; expiresAt: string } | null;
+  // "active" | "expired" — matches lib/payments/entitlement.ts's
+  // SubscriptionEntitlementStatus ("none" is represented as
+  // subscription: null instead, not a status string).
+  subscription: { status: string; expiresAt: string } | null;
   payment: SubscriptionStatusPayment | null;
 }
 
@@ -18,8 +21,17 @@ export type SubscriptionViewState =
   | { kind: "none" }
   | { kind: "pending"; status: string; paymentUrl: string | null }
   | { kind: "partially_paid"; paymentUrl: string | null }
+  // A payment that itself ended without success — failed/expired/
+  // refunded at the PAYMENT level (never got funded, or NOWPayments
+  // sent the money back). Distinct from "subscription_expired" below.
   | { kind: "terminal"; status: "failed" | "expired" | "refunded" }
-  | { kind: "active"; expiresAt: string };
+  | { kind: "active"; expiresAt: string }
+  // A subscription that WAS active but whose expiresAt has passed —
+  // the entitlement layer already resolved this (section 3: "expired
+  // subscriptions must automatically behave as inactive even if the DB
+  // status has not yet been changed"), so this state is exactly what
+  // GET /api/payments/status reports, nothing computed again here.
+  | { kind: "subscription_expired"; expiresAt: string };
 
 const TERMINAL_FAILURE_STATUSES = new Set(["failed", "expired", "refunded"]);
 
@@ -36,6 +48,9 @@ export function resolveSubscriptionViewState(data: SubscriptionStatusResponse | 
   if (data?.subscription?.status === "active") {
     return { kind: "active", expiresAt: data.subscription.expiresAt };
   }
+  if (data?.subscription?.status === "expired") {
+    return { kind: "subscription_expired", expiresAt: data.subscription.expiresAt };
+  }
 
   const payment = data?.payment;
   if (!payment) return { kind: "none" };
@@ -50,10 +65,11 @@ export function resolveSubscriptionViewState(data: SubscriptionStatusResponse | 
   return { kind: "pending", status: payment.status, paymentUrl: payment.paymentUrl };
 }
 
-/** Section 5: "stop polling after finished/failed/expired/refunded" —
- *  polling continues only while there's genuinely something that might
- *  still change (an in-flight or partially-paid payment with no active
- *  subscription yet). */
+/** Section 5 (Step 3) / entitlement correctness (this stage): polling
+ *  continues only while there's genuinely something that might still
+ *  change — an in-flight or partially-paid payment with no active
+ *  subscription yet. A resolved subscription_expired state doesn't
+ *  keep polling; it just offers a Renew action. */
 export function shouldContinuePolling(state: SubscriptionViewState): boolean {
   return state.kind === "pending" || state.kind === "partially_paid";
 }

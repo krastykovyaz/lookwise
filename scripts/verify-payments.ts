@@ -65,13 +65,19 @@ async function main() {
   const { createSubscriptionPayment } = await import("../src/lib/payments/nowpayments/checkout");
   const { processIpnEvent } = await import("../src/lib/payments/nowpayments/webhook");
   const { verifyIpnSignature } = await import("../src/lib/payments/nowpayments/ipn");
-  const { activateSubscriptionForPayment, getActiveSubscriptionForUser, createPaymentRecord, getPaymentByProviderPaymentId } = await import(
-    "../src/lib/db/repositories/payments"
-  );
+  const {
+    activateSubscriptionForPayment,
+    getActiveSubscriptionForUser,
+    createPaymentRecord,
+    getPaymentByProviderPaymentId,
+    markSubscriptionExpired,
+  } = await import("../src/lib/db/repositories/payments");
   const { SUBSCRIPTION_PRICE_AMOUNT, SUBSCRIPTION_PRICE_CURRENCY, PREFERRED_PAY_CURRENCY } = await import(
     "../src/lib/payments/pricing"
   );
   const { resolveSubscriptionViewState, shouldContinuePolling } = await import("../src/lib/payments/viewState");
+  const { getUserSubscription, isSubscriptionActive, requireActiveSubscription, SubscriptionRequiredError } =
+    await import("../src/lib/payments/entitlement");
 
   migrate(db, { migrationsFolder: path.join(__dirname, "..", "drizzle") });
 
@@ -113,7 +119,8 @@ async function main() {
       /if \(!userId\) return NextResponse\.json\(\{ error: "unauthorized" \}, \{ status: 401 \}\);/.test(
         statusRouteSource,
       ) &&
-      statusRouteSource.indexOf("getSessionUserId()") < statusRouteSource.indexOf("getActiveSubscriptionForUser("),
+      statusRouteSource.indexOf("const userId = await getSessionUserId();") <
+        statusRouteSource.indexOf("getUserSubscription(userId)"),
   );
 
   // --- Structural checks: subscription page (UI-level requirements that
@@ -175,10 +182,24 @@ async function main() {
     "active subscription -> 'active' with the expiry date, regardless of any payment status",
     (() => {
       const state = resolveSubscriptionViewState({
-        subscription: { status: "active", startedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-01-31T00:00:00.000Z" },
+        subscription: { status: "active", expiresAt: "2026-01-31T00:00:00.000Z" },
         payment: { status: "finished", paymentUrl: null },
       });
       return state.kind === "active" && (state as { expiresAt: string }).expiresAt === "2026-01-31T00:00:00.000Z";
+    })(),
+  );
+  check(
+    "subscription status 'expired' (entitlement layer already resolved it) -> 'subscription_expired', offers Renew",
+    (() => {
+      const state = resolveSubscriptionViewState({
+        subscription: { status: "expired", expiresAt: "2026-01-01T00:00:00.000Z" },
+        payment: { status: "finished", paymentUrl: null },
+      });
+      return (
+        state.kind === "subscription_expired" &&
+        (state as { expiresAt: string }).expiresAt === "2026-01-01T00:00:00.000Z" &&
+        !shouldContinuePolling(state)
+      );
     })(),
   );
   for (const pendingStatus of ["waiting", "confirming", "confirmed", "sending", "finished"]) {
@@ -439,6 +460,131 @@ async function main() {
     uniqueConstraintHeld = true;
   }
   check("a duplicate NOWPayments payment_id cannot be persisted twice", uniqueConstraintHeld);
+
+  // ==========================================================================
+  // Subscription entitlements (lib/payments/entitlement.ts) — the single
+  // server-side source of truth this stage adds.
+  // ==========================================================================
+
+  // --- active subscription -> entitlement true -----------------------------
+  // User A already has a genuinely active subscription from earlier in
+  // this run (the "finished IPN activates the subscription" section).
+  check("active subscription -> getUserSubscription reports 'active'", (await getUserSubscription(userA.id)).status === "active");
+  check("active subscription -> isSubscriptionActive is true", await isSubscriptionActive(userA.id));
+
+  // --- expiresAt in the past -> entitlement false (even though the DB
+  // status column still says 'active' — nothing has swept it) -----------
+  const [userE] = await db.insert(schema.users).values({ email: "e@example.com" }).returning();
+  const pastExpiry = new Date(Date.now() - 24 * 60 * 60 * 1000); // yesterday
+  const expiredPaymentForE = await createPaymentRecord({
+    id: crypto.randomUUID(),
+    userId: userE.id,
+    providerPaymentId: "np-real-" + crypto.randomUUID(),
+    orderId: crypto.randomUUID(),
+    priceAmount: 1,
+    priceCurrency: "eur",
+    status: "finished",
+  });
+  await db.insert(schema.subscriptions).values({
+    userId: userE.id,
+    status: "active", // DB says active...
+    startedAt: new Date(pastExpiry.getTime() - 30 * 24 * 60 * 60 * 1000),
+    expiresAt: pastExpiry, // ...but expiresAt is in the past
+    paymentId: expiredPaymentForE.id,
+  });
+  check(
+    "expiresAt in the past -> getUserSubscription reports 'expired', not 'active', with NO client refresh/hack needed (plain read)",
+    (await getUserSubscription(userE.id)).status === "expired",
+  );
+  check("expiresAt in the past -> isSubscriptionActive is false", !(await isSubscriptionActive(userE.id)));
+
+  // --- inactive (explicitly non-active status) subscription -> entitlement false ---
+  const [userF] = await db.insert(schema.users).values({ email: "f@example.com" }).returning();
+  const inactivePaymentForF = await createPaymentRecord({
+    id: crypto.randomUUID(),
+    userId: userF.id,
+    providerPaymentId: "np-real-" + crypto.randomUUID(),
+    orderId: crypto.randomUUID(),
+    priceAmount: 1,
+    priceCurrency: "eur",
+    status: "finished",
+  });
+  const [canceledSub] = await db
+    .insert(schema.subscriptions)
+    .values({
+      userId: userF.id,
+      status: "active",
+      startedAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      paymentId: inactivePaymentForF.id,
+    })
+    .returning();
+  await markSubscriptionExpired(canceledSub.id);
+  check("subscription explicitly marked non-active -> entitlement false", !(await isSubscriptionActive(userF.id)));
+
+  // --- no subscription at all -> entitlement false --------------------------
+  const [userG] = await db.insert(schema.users).values({ email: "g@example.com" }).returning();
+  check("no subscription -> getUserSubscription reports 'none'", (await getUserSubscription(userG.id)).status === "none");
+  check("no subscription -> isSubscriptionActive is false", !(await isSubscriptionActive(userG.id)));
+
+  // --- unauthenticated -> entitlement false, never treated as an active subscriber ---
+  check("unauthenticated (null userId) -> getUserSubscription reports 'none'", (await getUserSubscription(null)).status === "none");
+  check("unauthenticated (null userId) -> isSubscriptionActive is false", !(await isSubscriptionActive(null)));
+
+  // --- protected server endpoint primitive: rejects inactive, accepts active ---
+  let rejectedInactive = false;
+  try {
+    await requireActiveSubscription(userG.id); // never subscribed
+  } catch (err) {
+    rejectedInactive = err instanceof SubscriptionRequiredError;
+  }
+  check("requireActiveSubscription throws SubscriptionRequiredError for a non-subscriber", rejectedInactive);
+
+  let rejectedExpired = false;
+  try {
+    await requireActiveSubscription(userE.id); // expired by time
+  } catch (err) {
+    rejectedExpired = err instanceof SubscriptionRequiredError;
+  }
+  check("requireActiveSubscription throws for an expired-by-time subscriber", rejectedExpired);
+
+  let rejectedUnauthenticated = false;
+  try {
+    await requireActiveSubscription(null);
+  } catch (err) {
+    rejectedUnauthenticated = err instanceof SubscriptionRequiredError;
+  }
+  check("requireActiveSubscription throws for an unauthenticated caller", rejectedUnauthenticated);
+
+  let acceptedActive = true;
+  try {
+    await requireActiveSubscription(userA.id); // genuinely active from earlier
+  } catch {
+    acceptedActive = false;
+  }
+  check("requireActiveSubscription does not throw for a genuinely active subscriber", acceptedActive);
+
+  // --- renewal: an expired-by-time subscriber pays again -> gets a NEW
+  // active subscription; the old row is no longer the active one -------
+  const renewalPaymentId = "np-real-" + crypto.randomUUID();
+  const renewalPayment = await createPaymentRecord({
+    id: crypto.randomUUID(),
+    userId: userE.id,
+    providerPaymentId: renewalPaymentId,
+    orderId: crypto.randomUUID(),
+    priceAmount: 1,
+    priceCurrency: "eur",
+    status: "waiting",
+  });
+  const oldSubForE = await getActiveSubscriptionForUser(userE.id); // still DB-status 'active' (stale)
+  const renewalActivation = await activateSubscriptionForPayment(renewalPayment);
+  check("renewal for an expired-by-time subscriber succeeds (does not incorrectly no-op)", renewalActivation !== null);
+  check("renewal creates a genuinely NEW subscription row", renewalActivation?.id !== oldSubForE?.id);
+  check("after renewal, entitlement is active again", await isSubscriptionActive(userE.id));
+  const [oldSubRowAfterRenewal] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, oldSubForE!.id));
+  check("the old expired row was flipped away from 'active' (no longer blocks the partial unique index)", oldSubRowAfterRenewal.status !== "active");
+  const allSubsForE = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userE.id));
+  check("user E has exactly one row with status='active' after renewal (partial unique index intact)", allSubsForE.filter((s) => s.status === "active").length === 1);
 
   rmSync(dir, { recursive: true, force: true });
 

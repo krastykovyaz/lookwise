@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/auth/session";
-import { getActiveSubscriptionForUser, getLatestPaymentForUser } from "@/lib/db/repositories/payments";
+import { getLatestPaymentForUser } from "@/lib/db/repositories/payments";
+import { getUserSubscription } from "@/lib/payments/entitlement";
 
 export const runtime = "nodejs";
 
@@ -13,24 +14,30 @@ export const runtime = "nodejs";
 // the authenticated caller (section 8) — never accepts a userId,
 // paymentId, or anything else from the client to look up someone
 // else's state.
+//
+// Subscription status goes through getUserSubscription() (the
+// entitlement layer, not a raw repository read) specifically so an
+// "active" DB row whose expiresAt has already passed is correctly
+// reported as "expired" here — the same time-aware definition every
+// other entitlement check in the app uses, not a second copy of it.
 export async function GET() {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
     const [subscription, payment] = await Promise.all([
-      getActiveSubscriptionForUser(userId),
+      getUserSubscription(userId),
       getLatestPaymentForUser(userId),
     ]);
 
     return NextResponse.json({
-      subscription: subscription
-        ? {
-            status: subscription.status,
-            startedAt: subscription.startedAt,
-            expiresAt: subscription.expiresAt,
-          }
-        : null,
+      subscription:
+        subscription.status !== "none"
+          ? {
+              status: subscription.status,
+              expiresAt: subscription.expiresAt,
+            }
+          : null,
       payment: payment
         ? {
             status: payment.status,

@@ -159,12 +159,35 @@ export async function updatePaymentFromIpn(paymentRowId: string, input: UpdatePa
     .where(eq(schema.payments.id, paymentRowId));
 }
 
+/** Raw DB-status lookup only — status='active' in the column, nothing
+ *  more. Does NOT check expiresAt, so the row this returns can be
+ *  logically expired already (nothing currently flips status away from
+ *  'active' when time passes — no expiry sweep exists). Callers that
+ *  need the real "is this usable right now" answer should go through
+ *  lib/payments/entitlement.ts's getUserSubscription/
+ *  isSubscriptionActive instead, which is the one place that
+ *  business-level definition lives. This function stays a plain data
+ *  accessor on purpose (activateSubscriptionForPayment below is the
+ *  one place inside this repository that does its own expiresAt check,
+ *  for the write-path reason explained there). */
 export async function getActiveSubscriptionForUser(userId: string): Promise<SubscriptionRow | null> {
   const [row] = await db
     .select()
     .from(schema.subscriptions)
     .where(and(eq(schema.subscriptions.userId, userId), eq(schema.subscriptions.status, "active")));
   return row ?? null;
+}
+
+/** Flips a subscription's stored status away from 'active' once it's
+ *  been superseded by a renewal — see activateSubscriptionForPayment's
+ *  own doc for why this needs to happen at write time, not just be
+ *  tolerated at read time the way lib/payments/entitlement.ts tolerates
+ *  a not-yet-updated DB status for a simple "is it active" check. */
+export async function markSubscriptionExpired(subscriptionId: string): Promise<void> {
+  await db
+    .update(schema.subscriptions)
+    .set({ status: "expired", updatedAt: new Date() })
+    .where(eq(schema.subscriptions.id, subscriptionId));
 }
 
 function isUniqueConstraintError(err: unknown): boolean {
@@ -177,19 +200,37 @@ function isUniqueConstraintError(err: unknown): boolean {
  *  `subscription_payment_uq` means the same payment can never activate
  *  a second subscription no matter how many times its "finished" IPN
  *  is replayed, and `subscription_user_active_uq` means a user who
- *  already has an active subscription never gets a second one (section
- *  4: "do not create duplicate active subscriptions"). SQLite's
+ *  already has a genuinely-active subscription never gets a second one
+ *  (section 4: "do not create duplicate active subscriptions"). SQLite's
  *  ON CONFLICT clause only catches a conflict on the exact index named
  *  as its target, so the user-active case is checked explicitly first
  *  — onConflictDoNothing alone would let that one through as an
  *  uncaught constraint-violation error instead of a clean no-op. The
  *  catch below is a defense-in-depth backstop for the (normally
  *  impossible, single-writer SQLite) race between that check and the
- *  insert. Returns the created row, or null when either guard skipped
- *  it. */
+ *  insert.
+ *
+ *  Renewal: if the existing row's DB status is 'active' but its
+ *  expiresAt has already passed (nothing currently sweeps that column
+ *  forward on its own), it's explicitly marked 'expired' here before
+ *  inserting the new one. Without this, the partial unique index
+ *  itself would block a legitimate renewal forever — a second €1
+ *  payment could never activate anything because the OLD, merely
+ *  DB-stale row would keep "already has an active subscription" true
+ *  indefinitely. lib/payments/entitlement.ts tolerates the same
+ *  staleness on plain reads without writing anything; this is the one
+ *  write path where correcting it is actually necessary.
+ *
+ *  Returns the created row, or null when the user already has a
+ *  genuinely still-active subscription (not stale) or this exact
+ *  payment already activated one. */
 export async function activateSubscriptionForPayment(payment: PaymentRow): Promise<SubscriptionRow | null> {
-  const existingActive = await getActiveSubscriptionForUser(payment.userId);
-  if (existingActive) return null;
+  const existing = await getActiveSubscriptionForUser(payment.userId);
+  if (existing) {
+    const stillActive = existing.expiresAt.getTime() > Date.now();
+    if (stillActive) return null;
+    await markSubscriptionExpired(existing.id);
+  }
 
   const startedAt = new Date();
   try {
