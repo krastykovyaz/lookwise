@@ -40,7 +40,7 @@ async function main() {
   const { migrate } = await import("drizzle-orm/better-sqlite3/migrator");
   const { eq } = await import("drizzle-orm");
   const { createLook } = await import("../src/lib/db/repositories/look");
-  const { refreshStaleAvailability } = await import("../src/lib/products/availability");
+  const { refreshStaleAvailability, runAvailabilitySweep } = await import("../src/lib/products/availability");
   const { createReferralIfAbsent } = await import("../src/lib/db/repositories/referral");
   const {
     createNotification,
@@ -196,6 +196,84 @@ async function main() {
   check("markAllNotificationsRead reports the right count", markedCount === 2);
   check("mark-all-as-read zeroes the unread count", (await countUnreadNotifications(userA.id)) === 0);
   check("mark-all-as-read did not touch User B's unread notification", (await countUnreadNotifications(userB.id)) === 1);
+
+  // --- Proactive availability sweep (background worker) -------------------
+  // No page load, no reactive trigger — the sweep must find and check
+  // stale items with an active relationship entirely on its own, and
+  // must NEVER touch a stale item nobody has any relationship to.
+  const sevenHoursAgo2 = new Date(Date.now() - 7 * 60 * 60 * 1000);
+  const [userD] = await db.insert(schema.users).values({ email: "d@example.com" }).returning();
+
+  const [ownDirect] = await db
+    .insert(schema.products)
+    .values({
+      provider: "ebay",
+      providerItemId: "SWEEP-DIRECT-1",
+      title: "Sweep test: favorited item",
+      availabilityStatus: "AVAILABLE",
+      lastSeenAt: sevenHoursAgo2,
+      updatedAt: sevenHoursAgo2,
+      createdAt: sevenHoursAgo2,
+    })
+    .returning();
+  await db.insert(schema.savedProducts).values({ userId: userD.id, productId: "SWEEP-DIRECT-1" });
+
+  const [unrelated] = await db
+    .insert(schema.products)
+    .values({
+      provider: "ebay",
+      providerItemId: "SWEEP-UNRELATED-1",
+      title: "Sweep test: nobody saved this",
+      availabilityStatus: "AVAILABLE",
+      lastSeenAt: sevenHoursAgo2,
+      updatedAt: sevenHoursAgo2,
+      createdAt: sevenHoursAgo2,
+    })
+    .returning();
+
+  const [tooFresh] = await db
+    .insert(schema.products)
+    .values({
+      provider: "ebay",
+      providerItemId: "SWEEP-FRESH-1",
+      title: "Sweep test: saved but checked recently",
+      availabilityStatus: "AVAILABLE",
+      lastSeenAt: new Date(), // well within the 6h TTL
+      updatedAt: new Date(),
+      createdAt: new Date(),
+    })
+    .returning();
+  await db.insert(schema.savedProducts).values({ userId: userD.id, productId: "SWEEP-FRESH-1" });
+
+  const sweepStats = await runAvailabilitySweep();
+  check("sweep found and checked the favorited+stale item", sweepStats.candidatesChecked >= 1);
+
+  const [afterOwnDirect] = await db.select().from(schema.products).where(eq(schema.products.id, ownDirect.id));
+  check("sweep flipped the favorited stale item to UNAVAILABLE", afterOwnDirect.availabilityStatus === "UNAVAILABLE");
+  check(
+    "sweep created exactly one notification for the favoriting user",
+    (await countUnreadNotifications(userD.id)) === 1,
+  );
+
+  const [afterUnrelated] = await db.select().from(schema.products).where(eq(schema.products.id, unrelated.id));
+  check(
+    "sweep NEVER touched the unrelated item (no relationship = not checked, not flipped)",
+    afterUnrelated.availabilityStatus === "AVAILABLE" && afterUnrelated.lastSeenAt.getTime() === sevenHoursAgo2.getTime(),
+  );
+
+  const [afterTooFresh] = await db.select().from(schema.products).where(eq(schema.products.id, tooFresh.id));
+  check(
+    "sweep respected the TTL — a recently-checked saved item is left alone",
+    afterTooFresh.availabilityStatus === "AVAILABLE",
+  );
+
+  // Running the sweep again must not duplicate the notification already sent.
+  await db.update(schema.products).set({ lastSeenAt: sevenHoursAgo2 }).where(eq(schema.products.id, ownDirect.id));
+  await runAvailabilitySweep();
+  check(
+    "repeated sweep run does not duplicate the notification",
+    (await countUnreadNotifications(userD.id)) === 1,
+  );
 
   // --- Pagination -----------------------------------------------------------
   await db.delete(schema.notifications).where(eq(schema.notifications.userId, userA.id));
