@@ -1,12 +1,13 @@
 "use client";
 
-import { User, DollarSign, Bell, Info, LogOut, ChevronRight } from "lucide-react";
+import { User, DollarSign, Bell, Crown, Info, LogOut, ChevronRight } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSelector } from "@/components/ui/LanguageSelector";
 import { CurrencySelector } from "@/components/ui/CurrencySelector";
 import { LookProfileSummary } from "@/components/look/LookProfileSummary";
 import { NotificationsBadge } from "@/components/profile/NotificationsBadge";
+import { SubscriptionBadge } from "@/components/profile/SubscriptionBadge";
 import Link from "next/link";
 
 function Row({
@@ -122,6 +123,12 @@ export default function ProfilePage() {
               <span className="text-[12px] text-muted-soft">{t("common.comingSoon")}</span>
             )
           }
+        />
+        <Row
+          icon={Crown}
+          label={t("profile.subscription")}
+          href={isAuthenticated ? "/profile/subscription" : undefined}
+          trailing={isAuthenticated ? <SubscriptionBadge /> : null}
         />
       </div>
 

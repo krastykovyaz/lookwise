@@ -51,6 +51,7 @@ export interface CreatePaymentRecordInput {
   payCurrency?: string | null;
   payAmount?: number | null;
   payAddress?: string | null;
+  paymentUrl?: string | null;
   status: string;
 }
 
@@ -75,6 +76,7 @@ export async function createPaymentRecord(input: CreatePaymentRecordInput): Prom
       payCurrency: input.payCurrency ?? null,
       payAmount: input.payAmount ?? null,
       payAddress: input.payAddress ?? null,
+      paymentUrl: input.paymentUrl ?? null,
       status: input.status,
     })
     .returning();
@@ -89,6 +91,47 @@ export async function getPaymentByProviderPaymentId(
     .select()
     .from(schema.payments)
     .where(and(eq(schema.payments.provider, provider), eq(schema.payments.providerPaymentId, providerPaymentId)));
+  return row ?? null;
+}
+
+/** Step 3's invoice-based checkout (lib/payments/nowpayments/checkout.ts)
+ *  doesn't have a real NOWPayments payment_id at creation time — only
+ *  our own orderId, which IS known up front and is echoed back in every
+ *  IPN for that payment. webhook.ts falls back to this when
+ *  getPaymentByProviderPaymentId finds nothing, to locate the row a
+ *  placeholder providerPaymentId was created with. */
+export async function getPaymentByOrderId(orderId: string): Promise<PaymentRow | null> {
+  const [row] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+  return row ?? null;
+}
+
+/** "Upgrades" a payment row created with a placeholder providerPaymentId
+ *  (the NOWPayments invoice id — unique, but not the real payment id) to
+ *  the real payment_id NOWPayments only reveals via the first IPN for
+ *  that payment. Every later IPN for the same payment then matches
+ *  directly via getPaymentByProviderPaymentId, no fallback needed. */
+export async function linkProviderPaymentId(paymentRowId: string, providerPaymentId: string): Promise<PaymentRow> {
+  const [row] = await db
+    .update(schema.payments)
+    .set({ providerPaymentId, updatedAt: new Date() })
+    .where(eq(schema.payments.id, paymentRowId))
+    .returning();
+  return row;
+}
+
+/** The user's single most recent payment, regardless of status —
+ *  backs GET /api/payments/status (Step 3 section 5), which the
+ *  frontend polls while a payment is pending. Not scoped to in-flight
+ *  statuses (unlike findReusableInFlightPayment above) since the
+ *  status endpoint also needs to report a just-finished/failed/expired
+ *  outcome, not only "still pending". */
+export async function getLatestPaymentForUser(userId: string): Promise<PaymentRow | null> {
+  const [row] = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.userId, userId))
+    .orderBy(desc(schema.payments.createdAt))
+    .limit(1);
   return row ?? null;
 }
 

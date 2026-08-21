@@ -1,8 +1,11 @@
 import "server-only";
 import {
   getPaymentByProviderPaymentId,
+  getPaymentByOrderId,
+  linkProviderPaymentId,
   updatePaymentFromIpn,
   activateSubscriptionForPayment,
+  type PaymentRow,
 } from "@/lib/db/repositories/payments";
 import type { NowPaymentsIpnInput } from "@/lib/schemas";
 
@@ -50,7 +53,23 @@ export type IpnProcessingOutcome =
  *  already belongs to. */
 export async function processIpnEvent(payload: NowPaymentsIpnInput): Promise<IpnProcessingOutcome> {
   const providerPaymentId = String(payload.payment_id);
-  const payment = await getPaymentByProviderPaymentId(providerPaymentId);
+  let payment: PaymentRow | null = await getPaymentByProviderPaymentId(providerPaymentId);
+
+  if (!payment && payload.order_id) {
+    // The hosted-invoice flow (checkout.ts) doesn't know NOWPayments'
+    // real payment_id at creation time — the row was created with the
+    // invoice id as a placeholder, correlated instead by our own
+    // order_id (which NOWPayments echoes back on every IPN). The FIRST
+    // IPN for such a payment won't match by providerPaymentId yet;
+    // find it by order_id instead and upgrade the placeholder to the
+    // real id, so every later IPN for the same payment matches
+    // directly without this fallback.
+    const byOrderId = await getPaymentByOrderId(payload.order_id);
+    if (byOrderId) {
+      payment = await linkProviderPaymentId(byOrderId.id, providerPaymentId);
+    }
+  }
+
   if (!payment) {
     console.warn(`[Compass] NOWPayments IPN: unknown payment_id "${providerPaymentId}" — ignoring.`);
     return { outcome: "unknown_payment" };

@@ -65,12 +65,13 @@ async function main() {
   const { createSubscriptionPayment } = await import("../src/lib/payments/nowpayments/checkout");
   const { processIpnEvent } = await import("../src/lib/payments/nowpayments/webhook");
   const { verifyIpnSignature } = await import("../src/lib/payments/nowpayments/ipn");
-  const { activateSubscriptionForPayment, getActiveSubscriptionForUser, createPaymentRecord } = await import(
+  const { activateSubscriptionForPayment, getActiveSubscriptionForUser, createPaymentRecord, getPaymentByProviderPaymentId } = await import(
     "../src/lib/db/repositories/payments"
   );
   const { SUBSCRIPTION_PRICE_AMOUNT, SUBSCRIPTION_PRICE_CURRENCY, PREFERRED_PAY_CURRENCY } = await import(
     "../src/lib/payments/pricing"
   );
+  const { resolveSubscriptionViewState, shouldContinuePolling } = await import("../src/lib/payments/viewState");
 
   migrate(db, { migrationsFolder: path.join(__dirname, "..", "drizzle") });
 
@@ -102,26 +103,141 @@ async function main() {
       ipnRouteSource.indexOf("verifyIpnSignature(") < ipnRouteSource.indexOf("processIpnEvent("),
   );
 
+  const statusRouteSource = readFileSync(
+    path.join(__dirname, "..", "src", "app", "api", "payments", "status", "route.ts"),
+    "utf8",
+  );
+  check(
+    "status route checks getSessionUserId() and 401s before reading any payment/subscription data",
+    /getSessionUserId\(\)/.test(statusRouteSource) &&
+      /if \(!userId\) return NextResponse\.json\(\{ error: "unauthorized" \}, \{ status: 401 \}\);/.test(
+        statusRouteSource,
+      ) &&
+      statusRouteSource.indexOf("getSessionUserId()") < statusRouteSource.indexOf("getActiveSubscriptionForUser("),
+  );
+
+  // --- Structural checks: subscription page (UI-level requirements that
+  // don't fit a pure function — this project has no React rendering test
+  // harness, so these are verified the same way verify-explore-
+  // pagination.ts checks ExploreFeed.tsx: asserting the actual guard/
+  // behavior is present in source, not just trusting a description). ---
+  const subscriptionPageSource = readFileSync(
+    path.join(__dirname, "..", "src", "app", "profile", "subscription", "page.tsx"),
+    "utf8",
+  );
+  check(
+    "subscribe handler guards against double-click (checks isCreating before doing anything)",
+    /if \(isCreating\) return;/.test(subscriptionPageSource),
+  );
+  check(
+    "payment creation calls the existing POST /api/payments/create with no request body",
+    /fetch\("\/api\/payments\/create", \{ method: "POST" \}\)/.test(subscriptionPageSource),
+  );
+  check(
+    "successful payment creation navigates externally to the returned URL, not an iframe",
+    /window\.location\.href = json\.payment\.paymentUrl;/.test(subscriptionPageSource) &&
+      !/<iframe/i.test(subscriptionPageSource),
+  );
+  check(
+    "a loading state is shown before the first status fetch resolves",
+    /loadState === "loading"/.test(subscriptionPageSource),
+  );
+  check(
+    "unauthenticated users see a sign-in prompt, not a payments fetch",
+    /sessionStatus === "unauthenticated"/.test(subscriptionPageSource) &&
+      /href="\/login"/.test(subscriptionPageSource),
+  );
+  check(
+    "polling is bounded by both a max duration and teardown on unmount/inactive",
+    /MAX_POLL_DURATION_MS/.test(subscriptionPageSource) &&
+      /clearInterval/.test(subscriptionPageSource) &&
+      /return \(\) => clearInterval\(interval\);/.test(subscriptionPageSource),
+  );
+  check(
+    "polling never calls the create-payment endpoint (status only)",
+    (() => {
+      const pollingEffectMatch = subscriptionPageSource.match(
+        /useEffect\(\(\) => \{\s*if \(!pollingActive\)[\s\S]*?\}, \[pollingActive\]\);/,
+      );
+      return !!pollingEffectMatch && !pollingEffectMatch[0].includes("/api/payments/create");
+    })(),
+  );
+
+  // --- Pure state-resolution logic (lib/payments/viewState.ts) ----------
+  // Covers section 10's UI-facing scenarios without needing a rendering
+  // harness: every "given this backend status, what should the page
+  // show / should it keep polling" case is a plain function call.
+  check(
+    "no subscription, no payment -> 'none' (shows the Subscribe for €1 card)",
+    resolveSubscriptionViewState(null).kind === "none",
+  );
+  check(
+    "active subscription -> 'active' with the expiry date, regardless of any payment status",
+    (() => {
+      const state = resolveSubscriptionViewState({
+        subscription: { status: "active", startedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-01-31T00:00:00.000Z" },
+        payment: { status: "finished", paymentUrl: null },
+      });
+      return state.kind === "active" && (state as { expiresAt: string }).expiresAt === "2026-01-31T00:00:00.000Z";
+    })(),
+  );
+  for (const pendingStatus of ["waiting", "confirming", "confirmed", "sending", "finished"]) {
+    check(
+      `payment status "${pendingStatus}" with no active subscription yet -> 'pending' (keeps polling)`,
+      resolveSubscriptionViewState({ subscription: null, payment: { status: pendingStatus, paymentUrl: "https://x" } }).kind ===
+        "pending",
+    );
+  }
+  check(
+    "partially_paid -> its own state, distinct from pending/terminal",
+    resolveSubscriptionViewState({ subscription: null, payment: { status: "partially_paid", paymentUrl: "https://x" } }).kind ===
+      "partially_paid",
+  );
+  for (const terminalStatus of ["failed", "expired", "refunded"]) {
+    check(
+      `payment status "${terminalStatus}" -> 'terminal' (stop polling, offer retry)`,
+      (() => {
+        const state = resolveSubscriptionViewState({ subscription: null, payment: { status: terminalStatus, paymentUrl: null } });
+        return state.kind === "terminal" && (state as { status: string }).status === terminalStatus;
+      })(),
+    );
+  }
+  check(
+    "polling continues for pending and partially_paid",
+    shouldContinuePolling({ kind: "pending", status: "waiting", paymentUrl: null }) &&
+      shouldContinuePolling({ kind: "partially_paid", paymentUrl: null }),
+  );
+  check(
+    "polling stops for none/active/terminal",
+    !shouldContinuePolling({ kind: "none" }) &&
+      !shouldContinuePolling({ kind: "active", expiresAt: "2026-01-01T00:00:00.000Z" }) &&
+      !shouldContinuePolling({ kind: "terminal", status: "failed" }),
+  );
+
   // --- User fixtures ---------------------------------------------------
   const [userA] = await db.insert(schema.users).values({ email: "a@example.com" }).returning();
   const [userB] = await db.insert(schema.users).values({ email: "b@example.com" }).returning();
 
   // --- Authenticated payment creation + fixed price/currency -----------
+  // (hosted-invoice flow, Step 3 — see checkout.ts's own doc for why
+  // there is no real NOWPayments payment_id yet at this point, only an
+  // invoice id placeholder + our own order_id)
   let capturedCreateInput: unknown = null;
-  const fakePaymentId = "np-" + crypto.randomUUID();
+  const fakeInvoiceId = "inv-" + crypto.randomUUID();
+  const fakeInvoiceUrl = `https://nowpayments.io/payment/?iid=${fakeInvoiceId}`;
   const fakeDeps = {
-    createPayment: async (input: unknown) => {
+    createInvoice: async (input: unknown) => {
       capturedCreateInput = input;
       return {
-        payment_id: fakePaymentId,
-        payment_status: "waiting",
-        pay_address: "TFakeAddressXXXXXXXXXXXXXXXXXXXXXX",
-        price_amount: 1,
-        price_currency: "eur",
-        pay_amount: 1.05,
-        pay_currency: "usdttrc20",
+        id: fakeInvoiceId,
         order_id: (input as { order_id: string }).order_id,
         order_description: "Lookwise subscription",
+        price_amount: 1,
+        price_currency: "eur",
+        pay_currency: "usdttrc20",
+        invoice_url: fakeInvoiceUrl,
+        success_url: null,
+        cancel_url: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -130,12 +246,13 @@ async function main() {
   };
 
   const view = await createSubscriptionPayment(userA.id, fakeDeps);
-  check("createSubscriptionPayment returns the created payment's id", view.paymentId === fakePaymentId);
+  check("createSubscriptionPayment returns a placeholder id referencing the invoice", view.paymentId === `invoice:${fakeInvoiceId}`);
+  check("createSubscriptionPayment returns the hosted checkout URL", view.paymentUrl === fakeInvoiceUrl);
   check("returned view exposes only frontend-needed fields", Object.keys(view).sort().join(",") === [
-    "payAddress",
     "payAmount",
     "payCurrency",
     "paymentId",
+    "paymentUrl",
     "priceAmount",
     "priceCurrency",
     "status",
@@ -158,47 +275,61 @@ async function main() {
   check("payment row persisted with the userId", persisted?.userId === userA.id);
   check("payment row persisted with fixed price fields", persisted?.priceAmount === 1 && persisted?.priceCurrency === "eur");
   check("payment row status matches the created payment's initial status", persisted?.status === "waiting");
+  check("payment row persisted the checkout URL", persisted?.paymentUrl === fakeInvoiceUrl);
+  const orderIdForA = persisted!.orderId;
 
   // --- Duplicate in-flight payment prevention ---------------------------
   let secondCallHitNowPayments = false;
   const secondView = await createSubscriptionPayment(userA.id, {
     ...fakeDeps,
-    createPayment: async (input: unknown) => {
+    createInvoice: async (input: unknown) => {
       secondCallHitNowPayments = true;
-      return fakeDeps.createPayment(input);
+      return fakeDeps.createInvoice(input);
     },
   });
-  check("a second create call for the same user reuses the existing in-flight payment", secondView.paymentId === fakePaymentId);
+  check("a second create call for the same user reuses the existing in-flight payment", secondView.paymentId === view.paymentId);
   check("reusing an in-flight payment never calls NOWPayments again", !secondCallHitNowPayments);
+  check("reusing an in-flight payment returns the same checkout URL", secondView.paymentUrl === fakeInvoiceUrl);
   const allPaymentsForA = await db.select().from(schema.payments).where(eq(schema.payments.userId, userA.id));
   check("no duplicate payment row was created", allPaymentsForA.length === 1);
 
   // --- IPN signature verification ---------------------------------------
   const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET!;
-  const validPayload = { payment_id: fakePaymentId, payment_status: "finished", pay_currency: "usdttrc20", pay_amount: 1.05 };
+  const realPaymentIdForA = "np-real-" + crypto.randomUUID();
+  const validPayload = { payment_id: realPaymentIdForA, payment_status: "finished", pay_currency: "usdttrc20", pay_amount: 1.05, order_id: orderIdForA };
   const validSig = signPayload(validPayload, ipnSecret);
   check("valid IPN signature is accepted", verifyIpnSignature(validPayload, validSig));
   check("tampered payload with the old signature is rejected", !verifyIpnSignature({ ...validPayload, payment_status: "failed" }, validSig));
   check("missing signature header is rejected", !verifyIpnSignature(validPayload, null));
   check("garbage signature is rejected", !verifyIpnSignature(validPayload, "not-a-real-signature"));
 
+
   // --- partially_paid must NOT activate the subscription -----------------
+  // This is also the FIRST IPN for this payment — providerPaymentId is
+  // still the invoice placeholder, so this exercises the order_id
+  // fallback matching (webhook.ts) that upgrades it to the real
+  // payment_id.
   const partialResult = await processIpnEvent({
-    payment_id: fakePaymentId,
+    payment_id: realPaymentIdForA,
     payment_status: "partially_paid",
     pay_currency: "usdttrc20",
     pay_amount: 0.5,
+    order_id: orderIdForA,
   });
   check("partially_paid IPN is processed", partialResult.outcome === "processed");
   check("partially_paid does NOT activate a subscription", (partialResult as { subscriptionActivated: boolean }).subscriptionActivated === false);
   check("no subscription exists yet for user A", (await getActiveSubscriptionForUser(userA.id)) === null);
+  const upgradedRow = await getPaymentByProviderPaymentId(realPaymentIdForA);
+  check("order_id fallback upgraded the placeholder to the real payment_id", upgradedRow?.id === persisted!.id);
 
   // --- finished activates the subscription --------------------------------
+  // Now matches directly via providerPaymentId (already upgraded above).
   const finishedResult = await processIpnEvent({
-    payment_id: fakePaymentId,
+    payment_id: realPaymentIdForA,
     payment_status: "finished",
     pay_currency: "usdttrc20",
     pay_amount: 1.05,
+    order_id: orderIdForA,
   });
   check("finished IPN activates the subscription", (finishedResult as { subscriptionActivated: boolean }).subscriptionActivated === true);
   const activeAfterFinish = await getActiveSubscriptionForUser(userA.id);
@@ -211,10 +342,11 @@ async function main() {
   // --- repeated finished IPN is idempotent ---------------------------------
   const firstCompletedAt = paymentAfterFinish?.completedAt?.getTime();
   const repeatResult = await processIpnEvent({
-    payment_id: fakePaymentId,
+    payment_id: realPaymentIdForA,
     payment_status: "finished",
     pay_currency: "usdttrc20",
     pay_amount: 1.05,
+    order_id: orderIdForA,
   });
   check("repeated finished IPN is processed without error", repeatResult.outcome === "processed");
   check(
@@ -297,7 +429,7 @@ async function main() {
     await createPaymentRecord({
       id: crypto.randomUUID(),
       userId: userA.id,
-      providerPaymentId: fakePaymentId, // already used above
+      providerPaymentId: realPaymentIdForA, // already used above (upgraded onto user A's payment row)
       orderId: crypto.randomUUID(),
       priceAmount: 1,
       priceCurrency: "eur",

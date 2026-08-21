@@ -112,3 +112,48 @@ export interface CreatePaymentResponse {
 export async function createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
   return nowPaymentsFetch<CreatePaymentResponse>("/v1/payment", { method: "POST", body: input });
 }
+
+export interface CreateInvoiceInput {
+  price_amount: number;
+  price_currency: string;
+  pay_currency?: string;
+  order_id?: string;
+  order_description?: string;
+  ipn_callback_url?: string;
+  success_url?: string;
+  cancel_url?: string;
+}
+
+export interface CreateInvoiceResponse {
+  id: string;
+  order_id: string | null;
+  order_description: string | null;
+  price_amount: number;
+  price_currency: string;
+  pay_currency: string | null;
+  /** The hosted NOWPayments checkout page — redirect the user here.
+   *  Step 3 of the payments spec: no NOWPayments payment_id exists yet
+   *  at this point (unlike createPayment above, which returns one
+   *  immediately) — NOWPayments only creates the underlying payment
+   *  once the customer actually starts paying on this page, and that
+   *  payment_id first becomes known to us via its IPN. See
+   *  lib/payments/nowpayments/checkout.ts and webhook.ts for how the
+   *  local payment row is correlated in the meantime (by order_id,
+   *  not payment_id). */
+  invoice_url: string;
+  success_url: string | null;
+  cancel_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /v1/invoice — creates a hosted NOWPayments checkout page rather
+ *  than a raw pay-to address (createPayment above). Used for the
+ *  user-facing subscribe flow (Step 3) specifically so this app never
+ *  has to build its own "send exactly X USDT to this address" UI —
+ *  NOWPayments' own hosted page handles that once the user is
+ *  redirected there. Same "no business logic of its own about price/
+ *  currency" contract as createPayment. */
+export async function createInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResponse> {
+  return nowPaymentsFetch<CreateInvoiceResponse>("/v1/invoice", { method: "POST", body: input });
+}

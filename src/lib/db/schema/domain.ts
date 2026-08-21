@@ -276,7 +276,16 @@ export const payments = sqliteTable(
     priceCurrency: text("priceCurrency").notNull(),
     payCurrency: text("payCurrency"),
     payAmount: real("payAmount"),
+    // Set only by the direct-payment flow (lib/payments/nowpayments/
+    // client.ts's createPayment) — unused by the hosted-invoice flow
+    // (createInvoice) Step 3's UI actually calls, which never shows a
+    // raw address of its own. Kept rather than dropped: harmless to
+    // leave, and available again if a future non-hosted flow needs it.
     payAddress: text("payAddress"),
+    // The hosted NOWPayments checkout page (Step 3) — what the
+    // frontend redirects the user to. Null for a payment created via
+    // the direct-payment flow instead.
+    paymentUrl: text("paymentUrl"),
     // waiting | confirming | confirmed | sending | partially_paid |
     // finished | failed | expired | refunded — NOWPayments' own status
     // vocabulary, stored verbatim rather than mapped to a narrower enum
