@@ -22,6 +22,39 @@ const BORDER = "#e7e4dd";
 const FOREGROUND = "#14130f";
 const MUTED = "#6b6a63";
 
+// next/og's own remote-image fetching has no error isolation: if ANY
+// <img src="https://..."> it's given fails to decode (wrong format, a
+// redirect to an HTML error page, a transient eBay CDN hiccup — all
+// observed in practice), it throws and takes the WHOLE response down
+// with it — the route 502s and the crawler gets no image at all,
+// worse than showing fewer items. So each candidate image is resolved
+// to a data: URI here first, with its own timeout and error handling;
+// any image that fails is silently dropped rather than being allowed
+// to break the other three.
+async function toDataUri(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) return null;
+    const buffer = await res.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+    return `data:${contentType};base64,${base64}`;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveGalleryImages(urls: string[]): Promise<string[]> {
+  // Only ever need 4 tiles — no point resolving more candidates than
+  // that even if the look has extra components with images.
+  const settled = await Promise.allSettled(urls.slice(0, 4).map(toDataUri));
+  return settled
+    .filter((r): r is PromiseFulfilledResult<string | null> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((v): v is string => v != null);
+}
+
 function Tile({ src, radius }: { src: string; radius: string }) {
   return (
     <div
@@ -40,9 +73,8 @@ function Tile({ src, radius }: { src: string; radius: string }) {
   );
 }
 
-function Gallery({ images }: { images: string[] }) {
+function Gallery({ images, extra }: { images: string[]; extra: number }) {
   const shown = images.slice(0, 4);
-  const extra = images.length - shown.length;
 
   if (shown.length <= 1) {
     return (
@@ -96,13 +128,38 @@ function Gallery({ images }: { images: string[] }) {
   );
 }
 
-export default async function Image({ params }: { params: Promise<{ lookId: string }> }) {
-  const { lookId } = await params;
+function Fallback(title: string) {
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+          height: "100%",
+          background: BG,
+          fontFamily: "sans-serif",
+          fontSize: 40,
+          fontWeight: 700,
+          color: FOREGROUND,
+        }}
+      >
+        {title}
+      </div>
+    ),
+    { ...size },
+  );
+}
+
+async function renderLookImage(lookId: string): Promise<ImageResponse> {
   const look = await getPublicLook(lookId);
 
-  const images = (look?.components ?? [])
+  const candidateUrls = (look?.components ?? [])
     .map((c) => c.product?.image)
     .filter((img): img is string => Boolean(img));
+  const images = await resolveGalleryImages(candidateUrls);
+  const extra = Math.max(0, candidateUrls.length - 4);
 
   const itemCount = look?.components.filter((c) => c.product).length ?? 0;
   const priceLine = look?.totalPrice != null ? formatOgPrice(look.totalPrice, look.currency) : null;
@@ -112,51 +169,64 @@ export default async function Image({ params }: { params: Promise<{ lookId: stri
 
   return new ImageResponse(
     (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          width: "100%",
-          height: "100%",
-          padding: 40,
-          background: BG,
-          fontFamily: "sans-serif",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color: FOREGROUND }}>Lookwise</div>
-          {subtitle && <div style={{ display: "flex", fontSize: 24, color: MUTED }}>{subtitle}</div>}
-        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            width: "100%",
+            height: "100%",
+            padding: 40,
+            background: BG,
+            fontFamily: "sans-serif",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color: FOREGROUND }}>Lookwise</div>
+            {subtitle && <div style={{ display: "flex", fontSize: 24, color: MUTED }}>{subtitle}</div>}
+          </div>
 
-        <div style={{ display: "flex", flex: 1, marginTop: 24 }}>
-          {images.length > 0 ? (
-            <Gallery images={images} />
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 20,
-                border: `1px solid ${BORDER}`,
-                background: "#ffffff",
-                fontSize: 32,
-                color: MUTED,
-              }}
-            >
-              {look?.title ?? "Lookwise"}
+          <div style={{ display: "flex", flex: 1, marginTop: 24 }}>
+            {images.length > 0 ? (
+              <Gallery images={images} extra={extra} />
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 20,
+                  border: `1px solid ${BORDER}`,
+                  background: "#ffffff",
+                  fontSize: 32,
+                  color: MUTED,
+                }}
+              >
+                {look?.title ?? "Lookwise"}
+              </div>
+            )}
+          </div>
+
+          {look?.title && (
+            <div style={{ display: "flex", marginTop: 24, fontSize: 32, fontWeight: 600, color: FOREGROUND }}>
+              {look.title}
             </div>
           )}
         </div>
-
-        {look?.title && (
-          <div style={{ display: "flex", marginTop: 24, fontSize: 32, fontWeight: 600, color: FOREGROUND }}>
-            {look.title}
-          </div>
-        )}
-      </div>
     ),
     { ...size },
   );
+}
+
+export default async function Image({ params }: { params: Promise<{ lookId: string }> }) {
+  const { lookId } = await params;
+
+  // Never let this route fail the whole response — a crawler that gets
+  // a 502 shows NO preview at all, worse than a plain branded fallback.
+  try {
+    return await renderLookImage(lookId);
+  } catch (err) {
+    console.error("[opengraph-image] look render failed:", err);
+    return Fallback("Lookwise");
+  }
 }
