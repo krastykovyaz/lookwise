@@ -39,6 +39,16 @@ interface LookHistoryContextValue {
   recordViewedLook: (look: GeneratedLook) => GeneratedLook;
   getLook: (id: string) => GeneratedLook | null;
   clearLook: (id?: string) => void;
+  /** True while a "Create my look" generation is in flight, from click
+   *  until it resolves or fails. Lives here (root-level, survives
+   *  navigation) rather than as local state on the /look page itself —
+   *  the generation request is a fire-and-forget fetch that keeps
+   *  running after the user navigates away, so if this were local
+   *  state, returning to /look mid-generation would remount the page
+   *  with a fresh, idle button, inviting a duplicate click on a
+   *  generation that's still actually running. */
+  isGeneratingLook: boolean;
+  setIsGeneratingLook: (value: boolean) => void;
 }
 
 const LookHistoryContext = createContext<LookHistoryContextValue | null>(null);
@@ -85,6 +95,7 @@ function normalizeEntries(raw: unknown): LookHistoryEntry[] {
 export function LookHistoryProvider({ children }: { children: React.ReactNode }) {
   const [looks, setLooks] = useState<LookHistoryEntry[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isGeneratingLook, setIsGeneratingLook] = useState(false);
   const { status } = useSession();
 
   useEffect(() => {
@@ -194,8 +205,18 @@ export function LookHistoryProvider({ children }: { children: React.ReactNode })
   const latestLook = looks[0]?.look ?? null;
 
   const value = useMemo(
-    () => ({ looks, latestLook, isLoaded, recordLookHistory, recordViewedLook, getLook, clearLook }),
-    [looks, latestLook, isLoaded, recordLookHistory, recordViewedLook, getLook, clearLook],
+    () => ({
+      looks,
+      latestLook,
+      isLoaded,
+      recordLookHistory,
+      recordViewedLook,
+      getLook,
+      clearLook,
+      isGeneratingLook,
+      setIsGeneratingLook,
+    }),
+    [looks, latestLook, isLoaded, recordLookHistory, recordViewedLook, getLook, clearLook, isGeneratingLook],
   );
 
   return <LookHistoryContext.Provider value={value}>{children}</LookHistoryContext.Provider>;

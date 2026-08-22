@@ -38,7 +38,8 @@ export default function LookPage() {
   const { t, locale } = useI18n();
   const router = useRouter();
   const { profile, isLoaded, hasOnboarded } = useStyleProfile();
-  const { latestLook, looks, recordLookHistory, recordViewedLook } = useLookHistory();
+  const { latestLook, looks, recordLookHistory, recordViewedLook, isGeneratingLook, setIsGeneratingLook } =
+    useLookHistory();
   const { isSaved, toggleSaved } = useSavedLooks();
   const { signals, record } = usePreferenceSignals();
   const { getSignal, isPending, ensureLoaded, toggle } = useProductSignals();
@@ -124,8 +125,13 @@ export default function LookPage() {
       : null);
 
   const handleCreateLook = async () => {
-    if (!profile) return;
+    if (!profile || isGeneratingLook) return;
     setGenerateState("pending");
+    // Root-level (survives navigation), not gated on isMountedRef below
+    // — the button's pending state must reflect whether a generation is
+    // actually still running, regardless of which page is on screen
+    // when it starts or finishes.
+    setIsGeneratingLook(true);
 
     const currentLocation: LookContextLocation | null = activeCoordinates
       ? {
@@ -168,7 +174,8 @@ export default function LookPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setGenerateState("error");
+        setIsGeneratingLook(false);
+        if (isMountedRef.current) setGenerateState("error");
         return;
       }
       const look = data.look as GeneratedLook;
@@ -182,6 +189,7 @@ export default function LookPage() {
       // of whether this component is still mounted to see it.
       const saved = recordViewedLook(look);
       recordEvent({ type: "generate_look", lookId: saved.id ?? null, source: "look" });
+      setIsGeneratingLook(false);
       if (!isMountedRef.current) return;
       setGeneratedLook(saved);
       setWeather((data.context?.weather as WeatherData | null) ?? null);
@@ -192,6 +200,7 @@ export default function LookPage() {
         router.replace("/look");
       }
     } catch {
+      setIsGeneratingLook(false);
       if (isMountedRef.current) setGenerateState("error");
     }
   };
@@ -379,10 +388,10 @@ export default function LookPage() {
       <button
         type="button"
         onClick={handleCreateLook}
-        disabled={generateState === "pending"}
+        disabled={isGeneratingLook}
         className="mt-7 flex items-center justify-center rounded-full bg-primary px-6 py-3.5 text-[14px] font-medium text-primary-foreground transition-transform active:scale-95 disabled:opacity-60"
       >
-        {generateState === "pending" ? t("look.creating") : t("look.createMyLook")}
+        {isGeneratingLook ? t("look.creating") : t("look.createMyLook")}
       </button>
 
       {generateState === "error" && (
