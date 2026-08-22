@@ -72,7 +72,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t("auth.emailPlaceholder")}
-            className="w-full bg-transparent text-[14px] text-foreground placeholder:text-muted-soft outline-none"
+            className="w-full bg-transparent text-[16px] text-foreground placeholder:text-muted-soft outline-none"
           />
         </div>
         {error && <p className="text-[12.5px] text-red-500 px-1">{error}</p>}

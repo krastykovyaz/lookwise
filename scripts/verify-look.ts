@@ -12,7 +12,7 @@
  */
 import "server-only";
 import type { Product } from "../src/types/product";
-import { selectConsistentComponents } from "../src/lib/look";
+import { selectConsistentComponents, computeComponentSearchPriceBounds } from "../src/lib/look";
 import { getProductGender } from "../src/lib/recommendation/gender";
 
 let failures = 0;
@@ -157,6 +157,65 @@ function fakeProduct(id: string, title: string, seller: string | null): Product 
     "a role with no eligible candidate is left empty rather than forcing a violation",
     bottom?.product === null && bottom?.productId === null,
     `bottom component: ${JSON.stringify(bottom)}`,
+  );
+}
+
+// ---------------------------------------------------------------------
+// computeComponentSearchPriceBounds — the fix for a real bug: a "700+"
+// budget selection previously never reached eBay as a price floor at
+// all, so a generated look could cost a fraction of the selected band.
+// ---------------------------------------------------------------------
+{
+  const openEnded = computeComponentSearchPriceBounds(35, "700_plus", 4);
+  check(
+    "a 700+ budget split across 4 components produces a real per-component floor",
+    openEnded.minPrice === 175,
+    `minPrice: ${openEnded.minPrice}`,
+  );
+  check(
+    "a model-proposed ceiling below the computed floor is dropped, not sent as an impossible range",
+    openEnded.maxPrice === null,
+    `maxPrice: ${openEnded.maxPrice}`,
+  );
+}
+{
+  const compatible = computeComponentSearchPriceBounds(300, "700_plus", 4);
+  check(
+    "a model-proposed ceiling that's still above the floor is kept as-is",
+    compatible.minPrice === 175 && compatible.maxPrice === 300,
+    `minPrice: ${compatible.minPrice}, maxPrice: ${compatible.maxPrice}`,
+  );
+}
+{
+  const bounded = computeComponentSearchPriceBounds(null, "400_700", 4);
+  check(
+    "a bounded band (400-700, not open-ended) still floors on its min, not its max",
+    bounded.minPrice === 100,
+    `minPrice: ${bounded.minPrice}`,
+  );
+}
+{
+  const noBudget = computeComponentSearchPriceBounds(50, null, 3);
+  check(
+    "no budget selected at all -> no floor is invented, the model's own maxPrice passes through unchanged",
+    noBudget.minPrice === null && noBudget.maxPrice === 50,
+    `minPrice: ${noBudget.minPrice}, maxPrice: ${noBudget.maxPrice}`,
+  );
+}
+{
+  const noPreference = computeComponentSearchPriceBounds(50, "no_preference", 3);
+  check(
+    "explicit no_preference -> no floor either (min bound is 0)",
+    noPreference.minPrice === null,
+    `minPrice: ${noPreference.minPrice}`,
+  );
+}
+{
+  const underBudget = computeComponentSearchPriceBounds(20, "under_100", 4);
+  check(
+    "the lowest band (min: 0) never produces a floor",
+    underBudget.minPrice === null && underBudget.maxPrice === 20,
+    `minPrice: ${underBudget.minPrice}, maxPrice: ${underBudget.maxPrice}`,
   );
 }
 

@@ -33,14 +33,37 @@ const MUTED = "#6b6a63";
 // to break the other three.
 async function toDataUri(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return null;
+    // A bare server-side fetch with no User-Agent/Accept is a common
+    // trigger for CDN bot mitigation (eBay's image CDN sits behind
+    // Akamai) — it can 403 or return an HTML challenge page instead of
+    // the image, which without these headers looked identical to any
+    // other failure. A real browser UA plus an explicit Accept header
+    // avoids that. Also given more time than the previous 4s: these
+    // URLs are upscaled to eBay's largest served size (see
+    // lib/ebay/normalize.ts's upscaleEbayImageUrl), so fetching several
+    // concurrently from a serverless function needs real headroom.
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      },
+    });
+    if (!res.ok) {
+      console.warn(`[opengraph-image] item image fetch failed: HTTP ${res.status} for ${url}`);
+      return null;
+    }
     const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.startsWith("image/")) return null;
+    if (!contentType.startsWith("image/")) {
+      console.warn(`[opengraph-image] item image fetch returned non-image content-type "${contentType}" for ${url}`);
+      return null;
+    }
     const buffer = await res.arrayBuffer();
     const base64 = Buffer.from(buffer).toString("base64");
     return `data:${contentType};base64,${base64}`;
-  } catch {
+  } catch (err) {
+    console.warn(`[opengraph-image] item image fetch threw for ${url}:`, err instanceof Error ? err.message : err);
     return null;
   }
 }

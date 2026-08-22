@@ -126,7 +126,7 @@ export function AskCompass({ product }: { product: Product }) {
             if (e.key === "Enter") send(draft);
           }}
           placeholder={t("ask.placeholder")}
-          className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-soft"
+          className="flex-1 bg-transparent text-[16px] outline-none placeholder:text-muted-soft"
         />
         <button
           type="button"

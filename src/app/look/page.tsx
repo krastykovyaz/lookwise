@@ -56,6 +56,19 @@ export default function LookPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const recordedHistoryIdRef = useRef<string | null>(null);
+  // "Create my look" is a fire-and-forget request (intentionally: the
+  // user can navigate away and the generation still completes and gets
+  // recorded — see recordViewedLook below). Its .then() closure can
+  // therefore run long after this component has unmounted; this guards
+  // the one thing in that closure with a side effect on OTHER pages
+  // (router.replace) so a finished generation never yanks the user back
+  // to /look from wherever they've since navigated to.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   // Caches this browser session's public snapshot id per local look id
   // (see /api/look/share) so re-clicking Share on the same look never
   // materializes a second snapshot row. Keyed off generatedLook.id,
@@ -159,8 +172,17 @@ export default function LookPage() {
         return;
       }
       const look = data.look as GeneratedLook;
-      const saved = recordLookHistory(look);
+      // recordViewedLook (not recordLookHistory) so a freshly generated
+      // look is immediately eligible for Overview's "Recently viewed"
+      // list — that list filters on viewedAt being set, and generating
+      // a look is exactly the kind of "just saw this" moment that
+      // should count. This is also what makes navigating away mid-
+      // generation and coming back later work: the entry lands in
+      // history with a real viewedAt the instant it's ready, regardless
+      // of whether this component is still mounted to see it.
+      const saved = recordViewedLook(look);
       recordEvent({ type: "generate_look", lookId: saved.id ?? null, source: "look" });
+      if (!isMountedRef.current) return;
       setGeneratedLook(saved);
       setWeather((data.context?.weather as WeatherData | null) ?? null);
       setGenerateState("idle");
@@ -170,7 +192,7 @@ export default function LookPage() {
         router.replace("/look");
       }
     } catch {
-      setGenerateState("error");
+      if (isMountedRef.current) setGenerateState("error");
     }
   };
 
@@ -350,7 +372,7 @@ export default function LookPage() {
           onChange={(e) => setFreeText(e.target.value)}
           placeholder={t("look.freeTextPlaceholder")}
           rows={3}
-          className="mt-3 w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 text-[14px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
+          className="mt-3 w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 text-[16px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
         />
       </div>
 
