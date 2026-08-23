@@ -58,6 +58,11 @@ export async function mergeAnonymousState(userId: string, local: AnonymousLocalS
             location: local.profile.location ?? existing.location,
             favoriteCategories: local.profile.favoriteCategories.length ? local.profile.favoriteCategories : existing.favoriteCategories,
             dislikedCategories: local.profile.dislikedCategories.length ? local.profile.dislikedCategories : existing.dislikedCategories,
+            // Local (anonymous) gender is always null in practice — the
+            // /look toggle never persists it for a guest, only for an
+            // already-authenticated session — so this just always keeps
+            // whichever gender the account already had.
+            gender: local.profile.gender ?? existing.gender,
             profileCompleteness: 0,
             createdAt: existing.createdAt,
             updatedAt: local.profile.updatedAt,

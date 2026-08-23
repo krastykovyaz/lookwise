@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Sparkles, MapPin, CloudSun, RefreshCw, ThumbsUp, ThumbsDown, ChevronLeft, Bookmark } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useStyleProfile } from "@/lib/style/context";
@@ -37,7 +38,9 @@ type GenerateState = "idle" | "pending" | "error";
 export default function LookPage() {
   const { t, locale } = useI18n();
   const router = useRouter();
-  const { profile, isLoaded, hasOnboarded } = useStyleProfile();
+  const { status: sessionStatus } = useSession();
+  const isAuthenticated = sessionStatus === "authenticated";
+  const { profile, isLoaded, hasOnboarded, saveProfile } = useStyleProfile();
   const { latestLook, looks, recordLookHistory, recordViewedLook, isGeneratingLook, setIsGeneratingLook } =
     useLookHistory();
   const { isSaved, toggleSaved } = useSavedLooks();
@@ -83,6 +86,25 @@ export default function LookPage() {
       router.replace("/look/onboarding?returnTo=/look");
     }
   }, [isLoaded, hasOnboarded, router]);
+
+  // Restore the last gender pick, but only for signed-in users — a
+  // guest's choice is deliberately never remembered (lookGender's own
+  // useState default above is the reset every fresh session/guest gets).
+  useEffect(() => {
+    if (isAuthenticated && profile?.gender) setLookGender(profile.gender);
+  }, [isAuthenticated, profile?.gender]);
+
+  const handleGenderChange = (value: LookGender) => {
+    setLookGender(value);
+    if (isAuthenticated && profile) {
+      saveProfile({
+        styleArchetypes: profile.styleArchetypes,
+        budgetRange: profile.budgetRange,
+        location: profile.location,
+        gender: value,
+      });
+    }
+  };
 
   useEffect(() => {
     setHistoryId(new URLSearchParams(window.location.search).get("historyId"));
@@ -340,7 +362,7 @@ export default function LookPage() {
               key={gender}
               label={t(`look.gender.${gender}`)}
               selected={lookGender === gender}
-              onSelect={() => setLookGender(gender)}
+              onSelect={() => handleGenderChange(gender)}
             />
           ))}
         </div>

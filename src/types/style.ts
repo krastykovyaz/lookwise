@@ -86,6 +86,12 @@ export interface UserStyleProfile {
   location: UserLocation | null;
   favoriteCategories: string[];
   dislikedCategories: string[];
+  /** The last look-gender the user picked on /look, remembered only for
+   *  authenticated users (server-persisted, via the pre-existing
+   *  genderPreference DB column) — guests always see /look default back
+   *  to its hardcoded starting value instead of persisting anything
+   *  locally. See /look/page.tsx's handleGenderChange for that split. */
+  gender: LookGender | null;
   /** 0–1, how much of the profile is filled in. Recomputed on every save. */
   profileCompleteness: number;
   createdAt: string;
@@ -105,6 +111,7 @@ export function createEmptyStyleProfile(): UserStyleProfile {
     location: null,
     favoriteCategories: [],
     dislikedCategories: [],
+    gender: null,
     profileCompleteness: 0,
     createdAt: now,
     updatedAt: now,
