@@ -258,15 +258,42 @@ async function renderLookImage(lookId: string): Promise<ImageResponse> {
   );
 }
 
+// next/og's ImageResponse returns immediately with a body that's a
+// ReadableStream Satori/resvg (a WASM module) fills in AFTER this
+// function returns, as Next.js's own server pipes it to the client.
+// In production, that WASM decoder has been observed to intermittently
+// fail on perfectly valid input — same lookId, same images, verified
+// byte-for-byte fine in isolation — after the server process has been
+// up for a while (a WASM-instance degradation, not a data problem; see
+// this file's git history for the investigation). Because the failure
+// happens mid-stream, it happens AFTER the try/catch below has already
+// returned, so it used to bypass the fallback entirely and crash the
+// whole response as a 502 with nothing shown at all. Fully draining
+// the stream into a buffer here forces any such failure to surface as
+// a rejected promise INSIDE this function, where it can actually be
+// caught and turned into the safe branded fallback instead.
+async function materialize(response: ImageResponse): Promise<Response> {
+  const buffer = await response.arrayBuffer();
+  return new Response(buffer, { status: response.status, headers: response.headers });
+}
+
 export default async function Image({ params }: { params: Promise<{ lookId: string }> }) {
   const { lookId } = await params;
 
   // Never let this route fail the whole response — a crawler that gets
   // a 502 shows NO preview at all, worse than a plain branded fallback.
   try {
-    return await renderLookImage(lookId);
+    return await materialize(await renderLookImage(lookId));
   } catch (err) {
     console.error("[opengraph-image] look render failed:", err);
-    return Fallback("Lookwise");
+    try {
+      return await materialize(Fallback("Lookwise"));
+    } catch (fallbackErr) {
+      // Only reachable if even the plain text-only fallback can't
+      // render — the WASM decoder is unrelated to this, so this should
+      // be unreachable in practice, but a 204 beats a raw 502 either way.
+      console.error("[opengraph-image] branded fallback also failed to render:", fallbackErr);
+      return new Response(null, { status: 204 });
+    }
   }
 }
