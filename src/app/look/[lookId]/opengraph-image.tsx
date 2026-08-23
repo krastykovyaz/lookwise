@@ -31,32 +31,49 @@ const MUTED = "#6b6a63";
 // to a data: URI here first, with its own timeout and error handling;
 // any image that fails is silently dropped rather than being allowed
 // to break the other three.
+// next/og's renderer (Satori + resvg) only reliably decodes these three
+// raster formats inside an <img> — SVG, AVIF, and GIF all throw "Input
+// buffer contains unsupported image format" (observed in production:
+// see this file's git history). That error surfaces asynchronously
+// while ImageResponse is streaming the PNG back, which is AFTER
+// renderLookImage has already returned — so unlike every other failure
+// mode here, it happens too late for the outer try/catch (this file's
+// default export) to fall back gracefully; it hard-crashes the
+// response as a 502 with no image and no fallback. The only real fix
+// is never handing the renderer a format it can't decode in the first
+// place.
+const SUPPORTED_IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+
 async function toDataUri(url: string): Promise<string | null> {
   try {
     // A bare server-side fetch with no User-Agent/Accept is a common
     // trigger for CDN bot mitigation (eBay's image CDN sits behind
     // Akamai) — it can 403 or return an HTML challenge page instead of
     // the image, which without these headers looked identical to any
-    // other failure. A real browser UA plus an explicit Accept header
-    // avoids that. Also given more time than the previous 4s: these
-    // URLs are upscaled to eBay's largest served size (see
-    // lib/ebay/normalize.ts's upscaleEbayImageUrl), so fetching several
-    // concurrently from a serverless function needs real headroom.
+    // other failure. A real browser UA avoids that. The Accept header
+    // deliberately does NOT advertise avif/webp-only preference beyond
+    // what's in SUPPORTED_IMAGE_CONTENT_TYPES above — a CDN doing
+    // content negotiation on Accept could otherwise serve back exactly
+    // the AVIF/etc. format the renderer can't decode. Also given more
+    // time than an earlier 4s: these URLs are upscaled to eBay's
+    // largest served size (see lib/ebay/normalize.ts's
+    // upscaleEbayImageUrl), so fetching several concurrently needs
+    // real headroom.
     const res = await fetch(url, {
       signal: AbortSignal.timeout(8000),
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        Accept: "image/png,image/jpeg,image/webp,*/*;q=0.5",
       },
     });
     if (!res.ok) {
       console.warn(`[opengraph-image] item image fetch failed: HTTP ${res.status} for ${url}`);
       return null;
     }
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.startsWith("image/")) {
-      console.warn(`[opengraph-image] item image fetch returned non-image content-type "${contentType}" for ${url}`);
+    const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!SUPPORTED_IMAGE_CONTENT_TYPES.has(contentType)) {
+      console.warn(`[opengraph-image] item image fetch returned unsupported content-type "${contentType}" for ${url}`);
       return null;
     }
     const buffer = await res.arrayBuffer();
