@@ -2,6 +2,20 @@ import sharp from "sharp";
 import { getPublicLook } from "@/lib/db/repositories/look";
 import { formatOgPrice } from "@/lib/og";
 
+// This route composes several item photos (via sharp/libvips) in one
+// request, on a long-running process that's also handling everything
+// else Next.js's own sharp-backed image optimizer does concurrently.
+// Under real production load this was observed spuriously throwing
+// "Input buffer contains unsupported image format" — even for a
+// trivial static SVG with zero remote images — while the exact same
+// render always succeeded when invoked in isolation; that pattern
+// points at resource contention (memory/cache pressure from decoding
+// many large images concurrently across the process), not a decoding
+// bug. Disabling sharp's operation cache stops it from accumulating
+// unbounded state across many different one-off look images over the
+// process's lifetime.
+sharp.cache(false);
+
 // Telegram's regular link preview (a plain URL pasted in a chat) only
 // ever shows ONE image no matter how many og:image tags a page has —
 // multi-image galleries there are limited to Instant View (requires
@@ -95,17 +109,32 @@ function galleryLayout(count: number, galleryHeight: number): TileRect[] {
 // just drops that tile rather than breaking the others.
 const SUPPORTED_IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 
-async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+// Product cards elsewhere upscale eBay photos to their largest served
+// size (lib/ebay/normalize.ts's upscaleEbayImageUrl — s-l1600, often
+// several MB once decoded to raw pixels) because they're shown large.
+// The tiles here are never bigger than ~560px, so decoding a full
+// s-l1600 just to immediately downscale it wastes real memory for no
+// visual benefit — exactly the kind of per-request cost that adds up
+// into the resource contention described above. eBay's CDN serves the
+// same photo at any s-lNNN size on request, so this asks for a size
+// actually close to what's rendered instead.
+const EBAY_SIZE_TOKEN_PATTERN = /s-l\d+(?=\.(?:jpg|jpeg|png|webp)(?:$))/i;
+const OG_TILE_SIZE_TOKEN = "s-l500";
+
+function downscaleForTile(url: string): string {
+  if (!EBAY_SIZE_TOKEN_PATTERN.test(url)) return url;
+  return url.replace(EBAY_SIZE_TOKEN_PATTERN, OG_TILE_SIZE_TOKEN);
+}
+
+async function fetchImageBuffer(rawUrl: string): Promise<Buffer | null> {
+  const url = downscaleForTile(rawUrl);
   try {
     // A bare server-side fetch with no User-Agent/Accept is a common
     // trigger for CDN bot mitigation (eBay's image CDN sits behind
     // Akamai) — it can 403 or return an HTML challenge page instead of
     // the image. The Accept header only lists formats sharp/libvips
     // decodes, so a CDN doing content negotiation can't hand back
-    // something we'd reject anyway. These URLs are upscaled to eBay's
-    // largest served size (lib/ebay/normalize.ts's
-    // upscaleEbayImageUrl), so fetching several concurrently needs
-    // real headroom.
+    // something we'd reject anyway.
     const res = await fetch(url, {
       signal: AbortSignal.timeout(8000),
       headers: {
@@ -152,18 +181,21 @@ async function resolveGalleryTiles(
   urls: string[],
   rects: TileRect[],
 ): Promise<{ input: Buffer; left: number; top: number }[]> {
-  const settled = await Promise.allSettled(
-    urls.slice(0, rects.length).map(async (url, i) => {
-      const buf = await fetchImageBuffer(url);
-      if (!buf) return null;
-      const tile = await toRoundedTile(buf, rects[i]);
-      return tile ? { input: tile, left: Math.round(rects[i].x), top: Math.round(rects[i].y) } : null;
-    }),
-  );
-  return settled
-    .filter((r): r is PromiseFulfilledResult<{ input: Buffer; left: number; top: number } | null> => r.status === "fulfilled")
-    .map((r) => r.value)
-    .filter((v): v is { input: Buffer; left: number; top: number } => v != null);
+  // Network fetches stay concurrent (cheap, I/O-bound — matters for
+  // link-preview crawlers that don't wait long). The sharp/libvips
+  // work (decode + resize + mask) runs one image at a time instead —
+  // see this file's sharp.cache(false) comment for why: several
+  // concurrent decodes of full-size photos is exactly the kind of
+  // resource spike that was causing spurious render failures.
+  const buffers = await Promise.allSettled(urls.slice(0, rects.length).map(fetchImageBuffer));
+  const tiles: { input: Buffer; left: number; top: number }[] = [];
+  for (let i = 0; i < buffers.length; i++) {
+    const result = buffers[i];
+    if (result.status !== "fulfilled" || !result.value) continue;
+    const tile = await toRoundedTile(result.value, rects[i]);
+    if (tile) tiles.push({ input: tile, left: Math.round(rects[i].x), top: Math.round(rects[i].y) });
+  }
+  return tiles;
 }
 
 function overlaySvg(params: {
