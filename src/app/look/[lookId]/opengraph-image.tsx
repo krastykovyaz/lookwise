@@ -1,4 +1,4 @@
-import { ImageResponse } from "next/og";
+import sharp from "sharp";
 import { getPublicLook } from "@/lib/db/repositories/look";
 import { formatOgPrice } from "@/lib/og";
 
@@ -12,6 +12,19 @@ import { formatOgPrice } from "@/lib/og";
 // time, and serve that as the (sole) og:image. This file is Next.js's
 // built-in convention for exactly that — it auto-generates the
 // og:image/twitter:image meta tags pointing at this route.
+//
+// This used to be built with next/og's ImageResponse (Satori + a
+// bundled resvg WASM module). In production that WASM decoder was
+// observed to degrade over a process's uptime until it failed on
+// EVERY render — including a plain text box with zero remote images —
+// while the exact same inputs always rendered fine in an isolated
+// process. That's state corruption inside next/og's own dependency,
+// not anything about our data, and not fixable from here. sharp (a
+// native libvips binding, not WASM, and a completely separate module
+// instance from next/og's bundled one) is used instead: the whole
+// image is composed as one transparent-background SVG (text, borders,
+// the "+N" badge) layered via sharp's compositor on top of each
+// resized/rounded item photo.
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -22,41 +35,75 @@ const BORDER = "#e7e4dd";
 const FOREGROUND = "#14130f";
 const MUTED = "#6b6a63";
 
-// next/og's own remote-image fetching has no error isolation: if ANY
-// <img src="https://..."> it's given fails to decode (wrong format, a
-// redirect to an HTML error page, a transient eBay CDN hiccup — all
-// observed in practice), it throws and takes the WHOLE response down
-// with it — the route 502s and the crawler gets no image at all,
-// worse than showing fewer items. So each candidate image is resolved
-// to a data: URI here first, with its own timeout and error handling;
-// any image that fails is silently dropped rather than being allowed
-// to break the other three.
-// next/og's renderer (Satori + resvg) only reliably decodes these three
-// raster formats inside an <img> — SVG, AVIF, and GIF all throw "Input
-// buffer contains unsupported image format" (observed in production:
-// see this file's git history). That error surfaces asynchronously
-// while ImageResponse is streaming the PNG back, which is AFTER
-// renderLookImage has already returned — so unlike every other failure
-// mode here, it happens too late for the outer try/catch (this file's
-// default export) to fall back gracefully; it hard-crashes the
-// response as a 502 with no image and no fallback. The only real fix
-// is never handing the renderer a format it can't decode in the first
-// place.
+const PADDING = 40;
+const GAP = 12;
+const RADIUS = 20;
+const HEADER_TOP = PADDING;
+const HEADER_HEIGHT = 34;
+const TITLE_HEIGHT = 40;
+const GALLERY_TOP = HEADER_TOP + HEADER_HEIGHT + 24;
+const GALLERY_LEFT = PADDING;
+const GALLERY_WIDTH = size.width - PADDING * 2;
+
+function escapeXml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+interface TileRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Same layout the original Gallery/Tile components used: 1 -> full
+// width, 2 -> side by side, 3-4 -> two stacked columns with a "+N"
+// badge over the bottom-right tile if more items exist than fit.
+function galleryLayout(count: number, galleryHeight: number): TileRect[] {
+  const top = GALLERY_TOP;
+  if (count <= 1) {
+    return [{ x: GALLERY_LEFT, y: top, width: GALLERY_WIDTH, height: galleryHeight }];
+  }
+  if (count === 2) {
+    const w = (GALLERY_WIDTH - GAP) / 2;
+    return [
+      { x: GALLERY_LEFT, y: top, width: w, height: galleryHeight },
+      { x: GALLERY_LEFT + w + GAP, y: top, width: w, height: galleryHeight },
+    ];
+  }
+  const colWidth = (GALLERY_WIDTH - GAP) / 2;
+  const rowHeight = (galleryHeight - GAP) / 2;
+  const leftX = GALLERY_LEFT;
+  const rightX = GALLERY_LEFT + colWidth + GAP;
+  const topY = top;
+  const bottomY = top + rowHeight + GAP;
+  const rects = [
+    { x: leftX, y: topY, width: colWidth, height: rowHeight },
+    { x: rightX, y: topY, width: colWidth, height: rowHeight },
+  ];
+  if (count >= 3) rects.push({ x: leftX, y: bottomY, width: colWidth, height: rowHeight });
+  if (count >= 4) rects.push({ x: rightX, y: bottomY, width: colWidth, height: rowHeight });
+  // Layout order must match visual reading order left-col-top,
+  // right-col-top, left-col-bottom, right-col-bottom to mirror the
+  // original component's [0,1,2,3] -> [topLeft,topRight,bottomLeft,bottomRight].
+  return [rects[0], rects[1], rects[2], rects[3]].filter((r): r is TileRect => Boolean(r));
+}
+
+// next/og's own remote-image fetching had no error isolation — one bad
+// image took the whole render down. Each candidate is still resolved
+// independently here with its own timeout/validation, so one failure
+// just drops that tile rather than breaking the others.
 const SUPPORTED_IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 
-async function toDataUri(url: string): Promise<string | null> {
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   try {
     // A bare server-side fetch with no User-Agent/Accept is a common
     // trigger for CDN bot mitigation (eBay's image CDN sits behind
     // Akamai) — it can 403 or return an HTML challenge page instead of
-    // the image, which without these headers looked identical to any
-    // other failure. A real browser UA avoids that. The Accept header
-    // deliberately does NOT advertise avif/webp-only preference beyond
-    // what's in SUPPORTED_IMAGE_CONTENT_TYPES above — a CDN doing
-    // content negotiation on Accept could otherwise serve back exactly
-    // the AVIF/etc. format the renderer can't decode. Also given more
-    // time than an earlier 4s: these URLs are upscaled to eBay's
-    // largest served size (see lib/ebay/normalize.ts's
+    // the image. The Accept header only lists formats sharp/libvips
+    // decodes, so a CDN doing content negotiation can't hand back
+    // something we'd reject anyway. These URLs are upscaled to eBay's
+    // largest served size (lib/ebay/normalize.ts's
     // upscaleEbayImageUrl), so fetching several concurrently needs
     // real headroom.
     const res = await fetch(url, {
@@ -76,205 +123,144 @@ async function toDataUri(url: string): Promise<string | null> {
       console.warn(`[opengraph-image] item image fetch returned unsupported content-type "${contentType}" for ${url}`);
       return null;
     }
-    const buffer = await res.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
-    return `data:${contentType};base64,${base64}`;
+    return Buffer.from(await res.arrayBuffer());
   } catch (err) {
     console.warn(`[opengraph-image] item image fetch threw for ${url}:`, err instanceof Error ? err.message : err);
     return null;
   }
 }
 
-async function resolveGalleryImages(urls: string[]): Promise<string[]> {
-  // Only ever need 4 tiles — no point resolving more candidates than
-  // that even if the look has extra components with images.
-  const settled = await Promise.allSettled(urls.slice(0, 4).map(toDataUri));
+// Resizes/crops to exactly fill the tile, then clips to a rounded
+// rect via a mask composited with "dest-in" — the standard sharp
+// technique for rounded-corner photos.
+async function toRoundedTile(buffer: Buffer, rect: TileRect): Promise<Buffer | null> {
+  try {
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    const resized = await sharp(buffer).resize(w, h, { fit: "cover" }).png().toBuffer();
+    const mask = Buffer.from(
+      `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><rect width="${w}" height="${h}" rx="${RADIUS}" ry="${RADIUS}" fill="#fff"/></svg>`,
+    );
+    return await sharp(resized).composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
+  } catch (err) {
+    console.warn(`[opengraph-image] failed to process item image for tile:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+async function resolveGalleryTiles(
+  urls: string[],
+  rects: TileRect[],
+): Promise<{ input: Buffer; left: number; top: number }[]> {
+  const settled = await Promise.allSettled(
+    urls.slice(0, rects.length).map(async (url, i) => {
+      const buf = await fetchImageBuffer(url);
+      if (!buf) return null;
+      const tile = await toRoundedTile(buf, rects[i]);
+      return tile ? { input: tile, left: Math.round(rects[i].x), top: Math.round(rects[i].y) } : null;
+    }),
+  );
   return settled
-    .filter((r): r is PromiseFulfilledResult<string | null> => r.status === "fulfilled")
+    .filter((r): r is PromiseFulfilledResult<{ input: Buffer; left: number; top: number } | null> => r.status === "fulfilled")
     .map((r) => r.value)
-    .filter((v): v is string => v != null);
+    .filter((v): v is { input: Buffer; left: number; top: number } => v != null);
 }
 
-function Tile({ src, radius }: { src: string; radius: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flex: 1,
-        position: "relative",
-        overflow: "hidden",
-        borderRadius: radius,
-        border: `1px solid ${BORDER}`,
-        background: "#ffffff",
-      }}
-    >
-      <img src={src} alt="" width={560} height={560} style={{ objectFit: "cover", width: "100%", height: "100%" }} />
-    </div>
-  );
+function overlaySvg(params: {
+  title: string | null;
+  subtitle: string | null;
+  tileRects: TileRect[];
+  filledCount: number;
+  extra: number;
+  showEmptyBox: boolean;
+}): Buffer {
+  const { title, subtitle, tileRects, filledCount, extra, showEmptyBox } = params;
+  const galleryBottom = tileRects.length > 0 ? Math.max(...tileRects.map((r) => r.y + r.height)) : GALLERY_TOP;
+  const titleY = size.height - PADDING - TITLE_HEIGHT + 32;
+
+  const borders = tileRects
+    .slice(0, filledCount)
+    .map(
+      (r) =>
+        `<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${RADIUS}" ry="${RADIUS}" fill="none" stroke="${BORDER}" stroke-width="1"/>`,
+    )
+    .join("");
+
+  const badge =
+    extra > 0 && tileRects.length >= 4
+      ? (() => {
+          const last = tileRects[3];
+          const cx = last.x + last.width - 16 - 28;
+          const cy = last.y + last.height - 16 - 28;
+          return `<circle cx="${cx}" cy="${cy}" r="28" fill="rgba(20,19,15,0.82)"/><text x="${cx}" y="${cy + 8}" font-family="sans-serif" font-size="22" font-weight="600" fill="#ffffff" text-anchor="middle">+${extra}</text>`;
+        })()
+      : "";
+
+  const emptyBox = showEmptyBox
+    ? `<rect x="${GALLERY_LEFT}" y="${GALLERY_TOP}" width="${GALLERY_WIDTH}" height="${galleryBottom - GALLERY_TOP}" rx="${RADIUS}" ry="${RADIUS}" fill="#ffffff" stroke="${BORDER}" stroke-width="1"/>` +
+      (title
+        ? `<text x="${size.width / 2}" y="${(GALLERY_TOP + galleryBottom) / 2 + 11}" font-family="sans-serif" font-size="32" fill="${MUTED}" text-anchor="middle">${escapeXml(title)}</text>`
+        : "")
+    : "";
+
+  const subtitleText = subtitle
+    ? `<text x="${size.width - PADDING}" y="${HEADER_TOP + 24}" font-family="sans-serif" font-size="24" fill="${MUTED}" text-anchor="end">${escapeXml(subtitle)}</text>`
+    : "";
+
+  const titleText = title
+    ? `<text x="${PADDING}" y="${titleY}" font-family="sans-serif" font-size="32" font-weight="600" fill="${FOREGROUND}">${escapeXml(title)}</text>`
+    : "";
+
+  const svg = `<svg width="${size.width}" height="${size.height}" xmlns="http://www.w3.org/2000/svg">
+    <text x="${PADDING}" y="${HEADER_TOP + 24}" font-family="sans-serif" font-size="28" font-weight="700" fill="${FOREGROUND}">Lookwise</text>
+    ${subtitleText}
+    ${emptyBox}
+    ${borders}
+    ${badge}
+    ${titleText}
+  </svg>`;
+  return Buffer.from(svg);
 }
 
-function Gallery({ images, extra }: { images: string[]; extra: number }) {
-  const shown = images.slice(0, 4);
-
-  if (shown.length <= 1) {
-    return (
-      <div style={{ display: "flex", flex: 1, gap: 12 }}>
-        {shown[0] && <Tile src={shown[0]} radius="20px" />}
-      </div>
-    );
-  }
-
-  if (shown.length === 2) {
-    return (
-      <div style={{ display: "flex", flex: 1, gap: 12 }}>
-        <Tile src={shown[0]} radius="20px" />
-        <Tile src={shown[1]} radius="20px" />
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flex: 1, gap: 12 }}>
-      <div style={{ display: "flex", flex: 1, flexDirection: "column", gap: 12 }}>
-        <Tile src={shown[0]} radius="20px" />
-        {shown[2] && <Tile src={shown[2]} radius="20px" />}
-      </div>
-      <div style={{ display: "flex", flex: 1, flexDirection: "column", gap: 12, position: "relative" }}>
-        <Tile src={shown[1]} radius="20px" />
-        {shown[3] && <Tile src={shown[3]} radius="20px" />}
-        {extra > 0 && (
-          <div
-            style={{
-              display: "flex",
-              position: "absolute",
-              right: 16,
-              bottom: 16,
-              alignItems: "center",
-              justifyContent: "center",
-              width: 56,
-              height: 56,
-              borderRadius: 28,
-              background: "rgba(20,19,15,0.82)",
-              color: "#ffffff",
-              fontSize: 22,
-              fontWeight: 600,
-            }}
-          >
-            +{extra}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Fallback(title: string) {
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "100%",
-          height: "100%",
-          background: BG,
-          fontFamily: "sans-serif",
-          fontSize: 40,
-          fontWeight: 700,
-          color: FOREGROUND,
-        }}
-      >
-        {title}
-      </div>
-    ),
-    { ...size },
-  );
-}
-
-async function renderLookImage(lookId: string): Promise<ImageResponse> {
+async function renderLookImage(lookId: string): Promise<Buffer> {
   const look = await getPublicLook(lookId);
 
   const candidateUrls = (look?.components ?? [])
     .map((c) => c.product?.image)
     .filter((img): img is string => Boolean(img));
-  const images = await resolveGalleryImages(candidateUrls);
   const extra = Math.max(0, candidateUrls.length - 4);
 
   const itemCount = look?.components.filter((c) => c.product).length ?? 0;
   const priceLine = look?.totalPrice != null ? formatOgPrice(look.totalPrice, look.currency) : null;
-  const subtitle = [itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : null, priceLine]
-    .filter(Boolean)
-    .join(" · ");
+  const subtitle =
+    [itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : null, priceLine].filter(Boolean).join(" · ") ||
+    null;
 
-  return new ImageResponse(
-    (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            width: "100%",
-            height: "100%",
-            padding: 40,
-            background: BG,
-            fontFamily: "sans-serif",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color: FOREGROUND }}>Lookwise</div>
-            {subtitle && <div style={{ display: "flex", fontSize: 24, color: MUTED }}>{subtitle}</div>}
-          </div>
+  const galleryHeight = size.height - PADDING - TITLE_HEIGHT - 24 - GALLERY_TOP;
+  const tileRects = galleryLayout(Math.min(candidateUrls.length, 4) || 1, galleryHeight);
+  const tiles = candidateUrls.length > 0 ? await resolveGalleryTiles(candidateUrls, tileRects) : [];
 
-          <div style={{ display: "flex", flex: 1, marginTop: 24 }}>
-            {images.length > 0 ? (
-              <Gallery images={images} extra={extra} />
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flex: 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 20,
-                  border: `1px solid ${BORDER}`,
-                  background: "#ffffff",
-                  fontSize: 32,
-                  color: MUTED,
-                }}
-              >
-                {look?.title ?? "Lookwise"}
-              </div>
-            )}
-          </div>
+  const overlay = overlaySvg({
+    title: look?.title ?? "Lookwise",
+    subtitle,
+    tileRects,
+    filledCount: tiles.length,
+    extra,
+    showEmptyBox: tiles.length === 0,
+  });
 
-          {look?.title && (
-            <div style={{ display: "flex", marginTop: 24, fontSize: 32, fontWeight: 600, color: FOREGROUND }}>
-              {look.title}
-            </div>
-          )}
-        </div>
-    ),
-    { ...size },
-  );
+  return sharp({ create: { width: size.width, height: size.height, channels: 4, background: BG } })
+    .composite([...tiles, { input: overlay, left: 0, top: 0 }])
+    .png()
+    .toBuffer();
 }
 
-// next/og's ImageResponse returns immediately with a body that's a
-// ReadableStream Satori/resvg (a WASM module) fills in AFTER this
-// function returns, as Next.js's own server pipes it to the client.
-// In production, that WASM decoder has been observed to intermittently
-// fail on perfectly valid input — same lookId, same images, verified
-// byte-for-byte fine in isolation — after the server process has been
-// up for a while (a WASM-instance degradation, not a data problem; see
-// this file's git history for the investigation). Because the failure
-// happens mid-stream, it happens AFTER the try/catch below has already
-// returned, so it used to bypass the fallback entirely and crash the
-// whole response as a 502 with nothing shown at all. Fully draining
-// the stream into a buffer here forces any such failure to surface as
-// a rejected promise INSIDE this function, where it can actually be
-// caught and turned into the safe branded fallback instead.
-async function materialize(response: ImageResponse): Promise<Response> {
-  const buffer = await response.arrayBuffer();
-  return new Response(buffer, { status: response.status, headers: response.headers });
+function fallbackBuffer(title: string): Promise<Buffer> {
+  const svg = `<svg width="${size.width}" height="${size.height}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${size.width}" height="${size.height}" fill="${BG}"/>
+    <text x="${size.width / 2}" y="${size.height / 2 + 14}" font-family="sans-serif" font-size="40" font-weight="700" fill="${FOREGROUND}" text-anchor="middle">${escapeXml(title)}</text>
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 export default async function Image({ params }: { params: Promise<{ lookId: string }> }) {
@@ -283,15 +269,14 @@ export default async function Image({ params }: { params: Promise<{ lookId: stri
   // Never let this route fail the whole response — a crawler that gets
   // a 502 shows NO preview at all, worse than a plain branded fallback.
   try {
-    return await materialize(await renderLookImage(lookId));
+    const buffer = await renderLookImage(lookId);
+    return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "image/png" } });
   } catch (err) {
     console.error("[opengraph-image] look render failed:", err);
     try {
-      return await materialize(Fallback("Lookwise"));
+      const buffer = await fallbackBuffer("Lookwise");
+      return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "image/png" } });
     } catch (fallbackErr) {
-      // Only reachable if even the plain text-only fallback can't
-      // render — the WASM decoder is unrelated to this, so this should
-      // be unreachable in practice, but a 204 beats a raw 502 either way.
       console.error("[opengraph-image] branded fallback also failed to render:", fallbackErr);
       return new Response(null, { status: 204 });
     }
