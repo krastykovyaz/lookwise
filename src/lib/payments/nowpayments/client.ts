@@ -147,6 +147,23 @@ export interface CreateInvoiceResponse {
   updated_at: string;
 }
 
+export interface NowPaymentsMinAmountResponse {
+  currency_from: string;
+  currency_to: string;
+  min_amount: number;
+  fiat_equivalent?: number;
+}
+
+/** GET /v1/min-amount — the minimum payable amount NOWPayments will
+ *  accept for a given currency pair right now (their rates/fees change
+ *  over time, so this is never cached or assumed — see checkout.ts's
+ *  own call site for why it's queried fresh before every invoice). */
+export async function getMinAmount(currencyFrom: string, currencyTo: string): Promise<NowPaymentsMinAmountResponse> {
+  return nowPaymentsFetch<NowPaymentsMinAmountResponse>(
+    `/v1/min-amount?currency_from=${encodeURIComponent(currencyFrom)}&currency_to=${encodeURIComponent(currencyTo)}`,
+  );
+}
+
 /** POST /v1/invoice — creates a hosted NOWPayments checkout page rather
  *  than a raw pay-to address (createPayment above). Used for the
  *  user-facing subscribe flow (Step 3) specifically so this app never

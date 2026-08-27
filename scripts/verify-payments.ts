@@ -62,7 +62,9 @@ async function main() {
   const { db, schema } = await import("../src/lib/db/client");
   const { migrate } = await import("drizzle-orm/better-sqlite3/migrator");
   const { eq } = await import("drizzle-orm");
-  const { createSubscriptionPayment } = await import("../src/lib/payments/nowpayments/checkout");
+  const { createSubscriptionPayment, SubscriptionPriceBelowMinimumError } = await import(
+    "../src/lib/payments/nowpayments/checkout"
+  );
   const { processIpnEvent } = await import("../src/lib/payments/nowpayments/webhook");
   const { verifyIpnSignature } = await import("../src/lib/payments/nowpayments/ipn");
   const {
@@ -254,8 +256,8 @@ async function main() {
         order_id: (input as { order_id: string }).order_id,
         order_description: "Lookwise subscription",
         price_amount: SUBSCRIPTION_PRICE_AMOUNT,
-        price_currency: "eur",
-        pay_currency: "usdttrc20",
+        price_currency: SUBSCRIPTION_PRICE_CURRENCY,
+        pay_currency: "usdtbsc",
         invoice_url: fakeInvoiceUrl,
         success_url: null,
         cancel_url: null,
@@ -263,7 +265,12 @@ async function main() {
         updated_at: new Date().toISOString(),
       };
     },
-    getSupportedCurrencies: async () => ({ currencies: ["usdttrc20", "btc", "eth"] }),
+    getSupportedCurrencies: async () => ({ currencies: ["usdtbsc", "btc", "eth"] }),
+    getMinAmount: async (currencyFrom: string, currencyTo: string) => ({
+      currency_from: currencyFrom,
+      currency_to: currencyTo,
+      min_amount: SUBSCRIPTION_PRICE_AMOUNT - 0.5,
+    }),
   };
 
   const view = await createSubscriptionPayment(userA.id, fakeDeps);
@@ -283,17 +290,17 @@ async function main() {
     "fixed price cannot be overridden — the actual NOWPayments call always used the fixed constants",
     (capturedCreateInput as { price_amount: number })?.price_amount === SUBSCRIPTION_PRICE_AMOUNT &&
       (capturedCreateInput as { price_currency: string })?.price_currency === SUBSCRIPTION_PRICE_CURRENCY &&
-      SUBSCRIPTION_PRICE_CURRENCY === "eur",
+      SUBSCRIPTION_PRICE_CURRENCY === "usdtbsc",
   );
   check(
-    "USDT TRC20 preferred as pay_currency",
+    "USDT BSC (BEP20) preferred as pay_currency",
     (capturedCreateInput as { pay_currency: string })?.pay_currency === PREFERRED_PAY_CURRENCY &&
-      PREFERRED_PAY_CURRENCY === "usdttrc20",
+      PREFERRED_PAY_CURRENCY === "usdtbsc",
   );
 
   const [persisted] = await db.select().from(schema.payments).where(eq(schema.payments.userId, userA.id));
   check("payment row persisted with the userId", persisted?.userId === userA.id);
-  check("payment row persisted with fixed price fields", persisted?.priceAmount === SUBSCRIPTION_PRICE_AMOUNT && persisted?.priceCurrency === "eur");
+  check("payment row persisted with fixed price fields", persisted?.priceAmount === SUBSCRIPTION_PRICE_AMOUNT && persisted?.priceCurrency === SUBSCRIPTION_PRICE_CURRENCY);
   check("payment row status matches the created payment's initial status", persisted?.status === "waiting");
   check("payment row persisted the checkout URL", persisted?.paymentUrl === fakeInvoiceUrl);
   const orderIdForA = persisted!.orderId;
@@ -312,6 +319,73 @@ async function main() {
   check("reusing an in-flight payment returns the same checkout URL", secondView.paymentUrl === fakeInvoiceUrl);
   const allPaymentsForA = await db.select().from(schema.payments).where(eq(schema.payments.userId, userA.id));
   check("no duplicate payment row was created", allPaymentsForA.length === 1);
+
+  // --- Minimum-amount gate: never hardcoded, always queried live from
+  // NOWPayments before any invoice is created (section 3/4 of this
+  // stage's spec — this is the exact mechanism the €1/USDT TRC20 price
+  // was silently violating in production before this check existed). ---
+  const [userMinGateAbove] = await db.insert(schema.users).values({ email: "min-gate-above@example.com" }).returning();
+  const fakeInvoiceIdForMinGate = "inv-" + crypto.randomUUID();
+  const fakeInvoiceUrlForMinGate = `https://nowpayments.io/payment/?iid=${fakeInvoiceIdForMinGate}`;
+  let minAmountArgsAbove: [string, string] | null = null;
+  const viewAboveMin = await createSubscriptionPayment(userMinGateAbove.id, {
+    ...fakeDeps,
+    createInvoice: async (input: unknown) => ({
+      id: fakeInvoiceIdForMinGate,
+      order_id: (input as { order_id: string }).order_id,
+      order_description: "Lookwise subscription",
+      price_amount: SUBSCRIPTION_PRICE_AMOUNT,
+      price_currency: SUBSCRIPTION_PRICE_CURRENCY,
+      pay_currency: "usdtbsc",
+      invoice_url: fakeInvoiceUrlForMinGate,
+      success_url: null,
+      cancel_url: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
+    getMinAmount: async (currencyFrom: string, currencyTo: string) => {
+      minAmountArgsAbove = [currencyFrom, currencyTo];
+      return { currency_from: currencyFrom, currency_to: currencyTo, min_amount: SUBSCRIPTION_PRICE_AMOUNT - 0.5 };
+    },
+  });
+  check(
+    "min-amount is queried for the exact fixed price-currency -> pay-currency pair",
+    minAmountArgsAbove !== null &&
+      (minAmountArgsAbove as [string, string])[0] === SUBSCRIPTION_PRICE_CURRENCY &&
+      (minAmountArgsAbove as [string, string])[1] === PREFERRED_PAY_CURRENCY,
+  );
+  check("price above the live minimum -> invoice is created normally", viewAboveMin.paymentId === `invoice:${fakeInvoiceIdForMinGate}`);
+
+  const [userMinGateBelow] = await db.insert(schema.users).values({ email: "min-gate-below@example.com" }).returning();
+  let createInvoiceCalledForBelowMin = false;
+  let belowMinError: unknown = null;
+  try {
+    await createSubscriptionPayment(userMinGateBelow.id, {
+      ...fakeDeps,
+      createInvoice: async (input: unknown) => {
+        createInvoiceCalledForBelowMin = true;
+        return fakeDeps.createInvoice(input);
+      },
+      getMinAmount: async (currencyFrom: string, currencyTo: string) => ({
+        currency_from: currencyFrom,
+        currency_to: currencyTo,
+        min_amount: SUBSCRIPTION_PRICE_AMOUNT + 15.5,
+      }),
+    });
+  } catch (err) {
+    belowMinError = err;
+  }
+  check("price below the live minimum throws SubscriptionPriceBelowMinimumError", belowMinError instanceof SubscriptionPriceBelowMinimumError);
+  check(
+    "the thrown error carries the live minimum that was actually returned",
+    (belowMinError as InstanceType<typeof SubscriptionPriceBelowMinimumError> | null)?.minAmount === SUBSCRIPTION_PRICE_AMOUNT + 15.5,
+  );
+  check("createInvoice is never called when the price is below the minimum", !createInvoiceCalledForBelowMin);
+  const paymentsForBelowMinUser = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.userId, userMinGateBelow.id));
+  check("no payment row is persisted when the price is below the minimum", paymentsForBelowMinUser.length === 0);
 
   // --- IPN signature verification ---------------------------------------
   const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET!;

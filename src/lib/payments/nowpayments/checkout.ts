@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {
   createInvoice as createNowPaymentsInvoice,
   getSupportedCurrencies as getNowPaymentsCurrencies,
+  getMinAmount as getNowPaymentsMinAmount,
 } from "@/lib/payments/nowpayments/client";
 import {
   createPaymentRecord,
@@ -28,6 +29,28 @@ export interface SubscriptionPaymentView {
   paymentUrl: string | null;
 }
 
+/** Thrown when the fixed subscription price is below whatever minimum
+ *  NOWPayments is currently enforcing for this currency pair — a real
+ *  possibility since that minimum is their business/network decision,
+ *  not ours, and it can change without notice (this is exactly what
+ *  happened with USDT TRC20: its minimum turned out to be well above
+ *  €1 on this account). Carries the live minimum so callers can report
+ *  something concrete rather than a generic failure. */
+export class SubscriptionPriceBelowMinimumError extends Error {
+  minAmount: number;
+  currencyFrom: string;
+  currencyTo: string;
+  constructor(minAmount: number, currencyFrom: string, currencyTo: string) {
+    super(
+      `Subscription price (${SUBSCRIPTION_PRICE_AMOUNT} ${currencyFrom}) is below NOWPayments' current minimum of ${minAmount} ${currencyFrom} for ${currencyTo}.`,
+    );
+    this.name = "SubscriptionPriceBelowMinimumError";
+    this.minAmount = minAmount;
+    this.currencyFrom = currencyFrom;
+    this.currencyTo = currencyTo;
+  }
+}
+
 function toView(row: PaymentRow): SubscriptionPaymentView {
   return {
     paymentId: row.providerPaymentId,
@@ -48,21 +71,31 @@ function toView(row: PaymentRow): SubscriptionPaymentView {
 export interface CheckoutDeps {
   createInvoice: typeof createNowPaymentsInvoice;
   getSupportedCurrencies: typeof getNowPaymentsCurrencies;
+  getMinAmount: typeof getNowPaymentsMinAmount;
 }
 
 const defaultDeps: CheckoutDeps = {
   createInvoice: createNowPaymentsInvoice,
   getSupportedCurrencies: getNowPaymentsCurrencies,
+  getMinAmount: getNowPaymentsMinAmount,
 };
 
-/** Creates (or reuses an existing in-flight) €1 EUR subscription
- *  payment for the given user via a hosted NOWPayments invoice,
- *  preferring USDT TRC20. `userId` must already be the authenticated
- *  caller's id — this function trusts it completely and has no way to
- *  check a session itself; see api/payments/create/route.ts for that
- *  boundary. Price/currency are never parameters here at all (section
- *  2: "never trust price/currency from the browser") — there is
- *  nothing for a request body to override. */
+/** Creates (or reuses an existing in-flight) 1 USDT (BEP20) subscription
+ *  payment for the given user via a hosted NOWPayments invoice.
+ *  `userId` must already be the
+ *  authenticated caller's id — this function trusts it completely and
+ *  has no way to check a session itself; see api/payments/create/
+ *  route.ts for that boundary. Price/currency are never parameters
+ *  here at all (section 2: "never trust price/currency from the
+ *  browser") — there is nothing for a request body to override.
+ *
+ *  Before ever calling createInvoice, this queries NOWPayments' live
+ *  minimum-amount for the fixed price/pay-currency pair and refuses to
+ *  create an invoice below it (SubscriptionPriceBelowMinimumError) —
+ *  the minimum is NOWPayments' own business/network decision and is
+ *  never hardcoded or assumed here, since it can and does change (see
+ *  PREFERRED_PAY_CURRENCY's own doc for the incident that made this
+ *  necessary). */
 export async function createSubscriptionPayment(
   userId: string,
   deps: CheckoutDeps = defaultDeps,
@@ -79,7 +112,7 @@ export async function createSubscriptionPayment(
   const reusable = await findReusableInFlightPayment(userId);
   if (reusable) return toView(reusable);
 
-  // "Prefer USDT TRC20 if supported" — checked via the existing client,
+  // "Prefer USDT BSC if supported" — checked via the existing client,
   // but a failure to confirm support (network hiccup, an incomplete
   // currency list) doesn't block the one currency this product
   // actually offers; it's logged, not fatal.
@@ -95,6 +128,19 @@ export async function createSubscriptionPayment(
       "[Compass] NOWPayments: could not verify supported currencies, proceeding with the preferred currency anyway:",
       (err as Error).message,
     );
+  }
+
+  // Queried fresh on every call, never cached or hardcoded (section
+  // 4: "never hardcode the minimum amount") — NOWPayments' minimum for
+  // this currency pair is their own business/network decision and can
+  // change without notice. A price below it must never reach
+  // createInvoice at all; failing to even reach NOWPayments here (a
+  // network hiccup, misconfiguration) also blocks the invoice rather
+  // than assuming the price is fine, since there is no safe fallback
+  // minimum to compare against.
+  const { min_amount: minAmount } = await deps.getMinAmount(SUBSCRIPTION_PRICE_CURRENCY, PREFERRED_PAY_CURRENCY);
+  if (SUBSCRIPTION_PRICE_AMOUNT < minAmount) {
+    throw new SubscriptionPriceBelowMinimumError(minAmount, SUBSCRIPTION_PRICE_CURRENCY, PREFERRED_PAY_CURRENCY);
   }
 
   // Generated before calling NOWPayments and reused as both our own
