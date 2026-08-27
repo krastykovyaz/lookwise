@@ -314,9 +314,9 @@
     "genderTitle": "Quel type de look vous intéresse ?",
     "gender": {
       "women": "Femme",
-      "men": "Homme"
+      "men": "Homme",
+      "unisex": "Unisexe"
     },
-    "whyItWorks": "Pourquoi ça fonctionne",
     "photo": {
       "analyzing": "Analyse de votre photo…",
       "errorGeneric": "Impossible d'analyser cette photo. Veuillez réessayer."

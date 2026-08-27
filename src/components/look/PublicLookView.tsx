@@ -59,19 +59,6 @@ export function PublicLookView({ look, lookId }: { look: GeneratedLook; lookId: 
           </p>
         )}
 
-        {look.styleNotes && look.styleNotes.length > 0 && (
-          <div className="mt-4 rounded-2xl border border-border bg-surface px-4 py-3">
-            <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t("look.whyItWorks")}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {look.styleNotes.map((note) => (
-                <span key={note} className="rounded-full bg-background px-3 py-1.5 text-[11.5px] text-foreground">
-                  {note}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="mt-4 grid grid-cols-2 gap-3">
           {look.components.map((component, index) => (
             <div key={`${component.role}-${index}`}>

@@ -447,7 +447,7 @@ export default function LookPage() {
       <div className="mt-7">
         <h2 className="text-[15px] font-semibold text-foreground">{t("look.genderTitle")}</h2>
         <div className="mt-3 flex gap-2">
-          {(["women", "men"] as const).map((gender) => (
+          {(["women", "men", "unisex"] as const).map((gender) => (
             <OptionChip
               key={gender}
               label={t(`look.gender.${gender}`)}
@@ -618,17 +618,6 @@ export default function LookPage() {
               </div>
             </div>
           </div>
-
-          {generatedLook.styleNotes && generatedLook.styleNotes.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-border bg-surface px-4 py-3">
-              <p className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t("look.whyItWorks")}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {generatedLook.styleNotes.map((note) => (
-                  <span key={note} className="rounded-full bg-background px-3 py-1.5 text-[11.5px] text-foreground">{note}</span>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="mt-4 grid grid-cols-2 gap-3">
             {generatedLook.components.map((component, index) => (

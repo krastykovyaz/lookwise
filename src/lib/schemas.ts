@@ -68,7 +68,7 @@ export type ReverseGeocodeRequestInput = z.infer<typeof ReverseGeocodeRequestSch
 // travels with the request rather than being looked up server-side.
 export const LookGenerateRequestSchema = z.object({
   locale: z.enum(["en", "ru", "fr"]).default("en"),
-  gender: z.enum(["men", "women"]),
+  gender: z.enum(["men", "women", "unisex"]),
   profile: z.object({
     styleArchetypes: z.array(z.string()).default([]),
     preferredFit: z.string().nullish(),
