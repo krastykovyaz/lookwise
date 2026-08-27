@@ -281,7 +281,7 @@ export function createEmptyLookContext(): CurrentLookContext {
   };
 }
 
-export type LookGender = "men" | "women";
+export type LookGender = "men" | "women" | "unisex";
 
 export interface LookContext {
   profile: UserStyleProfile;

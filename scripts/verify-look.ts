@@ -219,5 +219,36 @@ function fakeProduct(id: string, title: string, seller: string | null): Product 
   );
 }
 
+// ---------------------------------------------------------------------
+// "unisex" requested: relaxes the mono-gender rule for the whole look
+// rather than requiring every candidate to literally be labeled
+// unisex — gendersCompatible already treats "unisex" as compatible
+// with "men" and "women" (lib/recommendation/gender.ts), so a men's
+// top and a women's bottom can both be selected in the same unisex-
+// requested look, while a genuinely unknown-gender item is still
+// rejected exactly as it is for a men's/women's request.
+// ---------------------------------------------------------------------
+{
+  const results = [
+    { component: { role: "top", searchQuery: "shirt" }, products: [fakeProduct("top-1", "Men's Shirt", "seller-a")] },
+    { component: { role: "bottom", searchQuery: "skirt" }, products: [fakeProduct("bottom-1", "Women's Skirt", "seller-b")] },
+    { component: { role: "shoes", searchQuery: "sneakers" }, products: [fakeProduct("shoes-1", "Unisex Sneakers", "seller-c")] },
+    { component: { role: "hat", searchQuery: "cap" }, products: [fakeProduct("hat-1", "A Plain Cap", "seller-d")] },
+  ];
+  const components = selectConsistentComponents(results, "unisex");
+  const productIds = components.map((c) => c.productId).filter(Boolean);
+  const genders = components.map((c) => (c.product ? getProductGender(c.product) : null));
+  check(
+    "unisex requested -> a men's item and a women's item are both accepted in the same look",
+    productIds.includes("top-1") && productIds.includes("bottom-1") && productIds.includes("shoes-1"),
+    `selected: ${productIds.join(", ")}, genders: ${genders.join(", ")}`,
+  );
+  check(
+    "unisex requested -> a genuinely unknown-gender candidate is still rejected, same as any other request",
+    !productIds.includes("hat-1"),
+    `selected: ${productIds.join(", ")}`,
+  );
+}
+
 console.log(`\n${failures === 0 ? "All /look consistency checks passed." : `${failures} check(s) FAILED.`}`);
 process.exit(failures === 0 ? 0 : 1);

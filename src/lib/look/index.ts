@@ -4,6 +4,7 @@ import type {
   CurrentLookContext,
   GeneratedLook,
   LookContext,
+  LookGender,
   LookGenerator,
   OutfitComponent,
   PreferenceSignal,
@@ -20,7 +21,7 @@ export function buildLookContext(
   current: Partial<CurrentLookContext> = {},
   preferenceSignals: PreferenceSignal[] = [],
   locale: "en" | "ru" | "fr" = "en",
-  gender: "men" | "women" = "women",
+  gender: LookGender = "women",
 ): LookContext {
   return {
     profile,
@@ -81,7 +82,7 @@ Rules:
 - Return JSON only.
 - Write the title, description, and every styleNotes entry in the same language as the user request/free-text. If free-text has no clear language, use the requested UI language.
 - Requested UI language: {{LOCALE}}.
-- Requested look gender: {{GENDER}} (men or women).
+- Requested look gender: {{GENDER}} (men, women, or unisex).
 - Never invent products, prices, sellers, or availability. You only create SEARCH INTENTS; real products will be fetched from eBay after you respond.
 - Build a coherent outfit with 2 to 5 components. Typical roles: top, bottom, outerwear, footwear, accessory.
 - Make all components compatible in dress level, silhouette, palette and season.
@@ -197,7 +198,12 @@ export function computeComponentSearchPriceBounds(
 // from unique sellers". Both are cumulative constraints (gender AND
 // seller), tracked together in one pass so a candidate only has to be
 // checked once per component.
-export function selectConsistentComponents(results: ComponentSearchResult[], requestedGender: "men" | "women" = "men"): OutfitComponent[] {
+export function selectConsistentComponents(results: ComponentSearchResult[], requestedGender: LookGender = "men"): OutfitComponent[] {
+  // "unisex" requested -> lookGender starts as "unisex", and
+  // gendersCompatible already treats "unisex" as compatible with
+  // "men", "women", and "unisex" itself (see that function's own
+  // doc) — so this relaxes the mono-gender rule for the whole look
+  // with no other change needed here.
   let lookGender: ProductGender = requestedGender;
   const usedSellers = new Set<string>();
 
@@ -289,7 +295,9 @@ class AIProductLookGenerator implements LookGenerator {
             componentCount,
           );
           const products = await productSearchProvider.search({
-            query: `${component.searchQuery} ${context.gender === "women" ? "women's" : "men's"}`,
+            query: `${component.searchQuery} ${
+              context.gender === "women" ? "women's" : context.gender === "men" ? "men's" : "unisex"
+            }`,
             color: component.color ?? null,
             maxPrice,
             minPrice,
