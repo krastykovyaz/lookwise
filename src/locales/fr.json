@@ -44,7 +44,8 @@
     "voiceListening": "Écoute en cours...",
     "voiceDenied": "Accès au microphone refusé",
     "voiceError": "La saisie vocale n'a pas fonctionné — réessayez",
-    "voiceUnsupported": "La saisie vocale n'est pas prise en charge par ce navigateur"
+    "voiceUnsupported": "La saisie vocale n'est pas prise en charge par ce navigateur",
+    "attachPhoto": "Recherche par photo"
   },
   "discover": {
     "title": "Découvrir",

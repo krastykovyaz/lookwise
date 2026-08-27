@@ -1,16 +1,19 @@
 /**
- * Regression tests for the "Build from photo" flow's structured-output
- * contract: the Zod schemas that validate both the client's request and
- * Gemini's response (lib/schemas.ts), and the Gemini client's config
- * guard (lib/ai/gemini.ts). Deliberately never calls the real Gemini
- * API — GEMINI_API_KEY is explicitly cleared before the config-guard
- * test so this is reproducible regardless of the local environment.
+ * Regression tests for both photo-analysis flows' structured-output
+ * contracts — outfit analysis feeding /look's free-text field, and
+ * single-product analysis feeding the search box (components/ai/
+ * AIInput.tsx) — the Zod schemas that validate both the client's
+ * request and Gemini's response (lib/schemas.ts), and the Gemini
+ * client's config guard (lib/ai/gemini.ts). Deliberately never calls
+ * the real Gemini API — GEMINI_API_KEY is explicitly cleared before
+ * each config-guard test so this is reproducible regardless of the
+ * local environment.
  * Run: npm run verify:photo
  */
 import "server-only";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { PhotoAnalysisSchema, PhotoAnalyzeRequestSchema } from "../src/lib/schemas";
+import { PhotoAnalysisSchema, PhotoAnalyzeRequestSchema, ProductPhotoAnalysisSchema } from "../src/lib/schemas";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string) {
@@ -119,7 +122,39 @@ check(
   "expected success: false",
 );
 
+// --- ProductPhotoAnalysisSchema (Gemini's single-product structured
+// output — feeds the search box, see components/ai/AIInput.tsx) -------
+
+check(
+  "a well-formed single-product response validates",
+  ProductPhotoAnalysisSchema.safeParse({
+    description: "Black leather biker jacket with silver zip hardware and a slim fit.",
+  }).success,
+  "expected success: true",
+);
+
+check(
+  "a response missing description entirely is rejected",
+  !ProductPhotoAnalysisSchema.safeParse({}).success,
+  "expected success: false",
+);
+
+check(
+  "an empty-string description is rejected (min(1))",
+  !ProductPhotoAnalysisSchema.safeParse({ description: "" }).success,
+  "expected success: false",
+);
+
+check(
+  "a description over 300 characters is rejected — tighter cap than the outfit schema's 500 since this is meant to stay one concise sentence",
+  !ProductPhotoAnalysisSchema.safeParse({ description: "a".repeat(301) }).success,
+  "expected success: false",
+);
+
 // --- PhotoAnalyzeRequestSchema (what the client sends) ------------------
+// Reused as-is for both the outfit and single-product routes — the
+// request shape (imageBase64/mimeType/locale) is identical; only the
+// response schema and prompt differ between the two flows.
 
 check(
   "a valid request (base64 + a supported mime type) is accepted",
@@ -185,13 +220,23 @@ async function checkConfigGuard() {
   const original = process.env.GEMINI_API_KEY;
   delete process.env.GEMINI_API_KEY;
   try {
-    const { analyzeOutfitPhoto, GeminiConfigError } = await import("../src/lib/ai/gemini");
+    const { analyzeOutfitPhoto, analyzeProductPhoto, GeminiConfigError } = await import("../src/lib/ai/gemini");
     try {
       await analyzeOutfitPhoto("aGVsbG8=", "image/jpeg", "en");
       check("analyzeOutfitPhoto without GEMINI_API_KEY throws before any network call", false, "did not throw");
     } catch (err) {
       check(
         "analyzeOutfitPhoto without GEMINI_API_KEY throws GeminiConfigError (never attempts a real API call)",
+        err instanceof GeminiConfigError,
+        `error: ${err instanceof Error ? err.constructor.name : String(err)}`,
+      );
+    }
+    try {
+      await analyzeProductPhoto("aGVsbG8=", "image/jpeg", "en");
+      check("analyzeProductPhoto without GEMINI_API_KEY throws before any network call", false, "did not throw");
+    } catch (err) {
+      check(
+        "analyzeProductPhoto without GEMINI_API_KEY throws GeminiConfigError (never attempts a real API call)",
         err instanceof GeminiConfigError,
         `error: ${err instanceof Error ? err.constructor.name : String(err)}`,
       );
@@ -234,9 +279,44 @@ function checkRouteStructure() {
   );
 }
 
+// Same checks as checkRouteStructure above, for the single-product
+// search-box route (api/buyer/photo-analyze) — separate route/prompt/
+// schema from the outfit one, but the same shape/guarantees.
+function checkProductRouteStructure() {
+  const routeSource = readFileSync(
+    path.join(__dirname, "..", "src", "app", "api", "buyer", "photo-analyze", "route.ts"),
+    "utf8",
+  );
+  check(
+    "the search-box photo route validates the request body before calling analyzeProductPhoto",
+    routeSource.indexOf("PhotoAnalyzeRequestSchema.safeParse(body)") <
+      routeSource.indexOf("analyzeProductPhoto("),
+    "expected schema validation to appear before the Gemini call in source order",
+  );
+  check(
+    "a missing GEMINI_API_KEY is reported as 'not configured' on the search-box route too",
+    /GeminiConfigError/.test(routeSource) && /photo_analysis_not_configured/.test(routeSource),
+    "expected both GeminiConfigError handling and the not-configured error code",
+  );
+  check(
+    "the search-box photo route never reads eBay search, payments, or Look-generation modules — it only describes a photo",
+    !/from "@\/lib\/ebay/.test(routeSource) &&
+      !/from "@\/lib\/payments/.test(routeSource) &&
+      !/lookGenerator/.test(routeSource) &&
+      !/searchProducts/.test(routeSource),
+    "expected no cross-feature imports, and no eBay search call of its own",
+  );
+  check(
+    "the search-box photo route forwards the client's locale to analyzeProductPhoto",
+    /analyzeProductPhoto\([^)]*parsed\.data\.locale/.test(routeSource),
+    "expected parsed.data.locale to be passed through",
+  );
+}
+
 async function main() {
   await checkConfigGuard();
   checkRouteStructure();
+  checkProductRouteStructure();
 
   console.log(`\n${failures === 0 ? "All photo-analysis checks passed." : `${failures} check(s) FAILED.`}`);
   process.exit(failures === 0 ? 0 : 1);

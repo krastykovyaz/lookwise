@@ -44,7 +44,8 @@
     "voiceListening": "Listening...",
     "voiceDenied": "Microphone access denied",
     "voiceError": "Voice input didn't work — try again",
-    "voiceUnsupported": "Voice input isn't supported in this browser"
+    "voiceUnsupported": "Voice input isn't supported in this browser",
+    "attachPhoto": "Search by photo"
   },
   "discover": {
     "title": "Discover",

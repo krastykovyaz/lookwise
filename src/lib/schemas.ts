@@ -309,3 +309,12 @@ export const PhotoAnalyzeRequestSchema = z.object({
   locale: z.enum(["en", "ru", "fr"]).default("en"),
 });
 export type PhotoAnalyzeRequestInput = z.infer<typeof PhotoAnalyzeRequestSchema>;
+
+// What we require Gemini's single-PRODUCT photo analysis to look like
+// (as opposed to PhotoAnalysisSchema above, which is outfit-shaped) —
+// see lib/ai/gemini.ts's analyzeProductPhoto. Feeds the search box
+// (components/ai/AIInput.tsx), never eBay results directly.
+export const ProductPhotoAnalysisSchema = z.object({
+  description: z.string().trim().min(1).max(300),
+});
+export type ProductPhotoAnalysis = z.infer<typeof ProductPhotoAnalysisSchema>;
