@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Sparkles, MapPin, CloudSun, RefreshCw, ThumbsUp, ThumbsDown, ChevronLeft, Bookmark } from "lucide-react";
+import { Sparkles, MapPin, CloudSun, RefreshCw, ThumbsUp, ThumbsDown, ChevronLeft, Bookmark, Camera } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useStyleProfile } from "@/lib/style/context";
 import {
@@ -32,8 +32,29 @@ import { useCurrency } from "@/lib/currency/context";
 import { formatPrice } from "@/lib/currency/format";
 import { lookSnapshot } from "@/lib/db/clientSync";
 import { ShareButton } from "@/components/share/ShareButton";
+import type { PhotoAnalysis } from "@/lib/schemas";
 
 type GenerateState = "idle" | "pending" | "error";
+type PhotoAnalysisStatus = "idle" | "analyzing" | "error";
+
+const PHOTO_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// data:image/jpeg;base64,<payload> -> { mimeType, base64 }. Only ever
+// called on a string this same helper just produced via readAsDataURL.
+function splitDataUrl(dataUrl: string): { mimeType: string; base64: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  return { mimeType: match[1], base64: match[2] };
+}
 
 export default function LookPage() {
   const { t, locale } = useI18n();
@@ -53,6 +74,8 @@ export default function LookPage() {
   const [lookGender, setLookGender] = useState<LookGender>("women");
   const [mood, setMood] = useState<LookMood | null>(null);
   const [freeText, setFreeText] = useState("");
+  const [photoAnalysisStatus, setPhotoAnalysisStatus] = useState<PhotoAnalysisStatus>("idle");
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [currentCoordinates, setCurrentCoordinates] = useState<Coordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "locating" | "ready" | "denied">("idle");
   const [generateState, setGenerateState] = useState<GenerateState>("idle");
@@ -106,17 +129,46 @@ export default function LookPage() {
     }
   };
 
+  // Attaching or dropping an outfit photo onto the "Anything else"
+  // field analyzes it (POST /api/look/photo-analyze — same endpoint/
+  // schema as the rest of the look flow, see lib/ai/gemini.ts) and
+  // replaces the field's text with Gemini's natural-language
+  // description — never a separate screen, never touching eBay or the
+  // generation flow below. The user can still freely edit the result.
+  const handlePhotoFile = async (file: File | null | undefined) => {
+    if (!file || photoAnalysisStatus === "analyzing") return;
+    if (!PHOTO_MIME_TYPES.includes(file.type)) {
+      setPhotoAnalysisStatus("error");
+      return;
+    }
+
+    setPhotoAnalysisStatus("analyzing");
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const parts = splitDataUrl(dataUrl);
+      if (!parts) {
+        setPhotoAnalysisStatus("error");
+        return;
+      }
+      const res = await fetch("/api/look/photo-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: parts.base64, mimeType: parts.mimeType }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPhotoAnalysisStatus("error");
+        return;
+      }
+      setFreeText((data.analysis as PhotoAnalysis).description);
+      setPhotoAnalysisStatus("idle");
+    } catch {
+      setPhotoAnalysisStatus("error");
+    }
+  };
+
   useEffect(() => {
     setHistoryId(new URLSearchParams(window.location.search).get("historyId"));
-  }, []);
-
-  // Seeds the existing "Anything else" field from a photo analysis
-  // (see app/look/photo/page.tsx) — same one-shot query-param read as
-  // historyId above, not a new field, and the user can still freely
-  // edit it afterward like anything else they'd have typed themselves.
-  useEffect(() => {
-    const photoDescription = new URLSearchParams(window.location.search).get("photoDescription");
-    if (photoDescription) setFreeText(photoDescription);
   }, []);
 
   useEffect(() => {
@@ -407,13 +459,47 @@ export default function LookPage() {
 
       <div className="mt-6">
         <h2 className="text-[15px] font-semibold text-foreground">{t("look.freeTextTitle")}</h2>
-        <textarea
-          value={freeText}
-          onChange={(e) => setFreeText(e.target.value)}
-          placeholder={t("look.freeTextPlaceholder")}
-          rows={3}
-          className="mt-3 w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 text-[16px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
-        />
+        <div className="relative mt-3">
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept={PHOTO_MIME_TYPES.join(",")}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              void handlePhotoFile(file);
+            }}
+          />
+          <textarea
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              void handlePhotoFile(e.dataTransfer.files?.[0]);
+            }}
+            placeholder={t("look.freeTextPlaceholder")}
+            rows={3}
+            disabled={photoAnalysisStatus === "analyzing"}
+            className="w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 pr-12 text-[16px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={photoAnalysisStatus === "analyzing"}
+            aria-label={t("look.attachPhoto")}
+            className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-background text-muted disabled:opacity-60"
+          >
+            <Camera size={16} strokeWidth={1.75} />
+          </button>
+        </div>
+        {photoAnalysisStatus === "analyzing" && (
+          <p className="mt-2 text-[12.5px] text-muted">{t("look.photo.analyzing")}</p>
+        )}
+        {photoAnalysisStatus === "error" && (
+          <p className="mt-2 text-[12.5px] text-muted">{t("look.photo.errorGeneric")}</p>
+        )}
       </div>
 
       <button

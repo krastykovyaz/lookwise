@@ -86,8 +86,8 @@ check(
 );
 
 // --- description: the field this feature added (feeds /look's
-// existing "Anything else" field — see app/look/photo/page.tsx and
-// app/look/page.tsx). ----------------------------------------------------
+// existing "Anything else" field directly — see
+// app/look/page.tsx's handlePhotoFile). ----------------------------------
 
 check(
   "a response missing description entirely is rejected — the natural-language summary is required, not optional",

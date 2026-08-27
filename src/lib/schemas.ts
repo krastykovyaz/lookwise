@@ -291,7 +291,7 @@ export const PhotoAnalysisSchema = z.object({
   // written by Gemini in the same call, not derived client-side from
   // the structured fields above, so it reads fluently rather than like
   // a templated join. Feeds the /look page's existing free-text field
-  // (see app/look/photo/page.tsx and app/look/page.tsx).
+  // directly (see app/look/page.tsx's handlePhotoFile).
   description: z.string().trim().min(1).max(500),
 });
 export type PhotoAnalysis = z.infer<typeof PhotoAnalysisSchema>;

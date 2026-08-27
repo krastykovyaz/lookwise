@@ -4,15 +4,16 @@ import { analyzeOutfitPhoto, GeminiConfigError } from "@/lib/ai/gemini";
 
 export const runtime = "nodejs";
 
-// POST /api/look/photo-analyze — the "Build from photo" flow's only
-// server call. Mirrors /api/look/generate's shape (validate body,
-// never trust the client further, generic error on failure) but does
-// a fundamentally different, narrower thing: it ONLY returns a
-// structured description of what's visible in the photo (see
-// lib/ai/gemini.ts's analyzeOutfitPhoto and PhotoAnalysisSchema) — it
-// never searches eBay and never creates a Look. No auth is required,
-// same as /api/look/generate, so a guest can try this before
-// onboarding.
+// POST /api/look/photo-analyze — called when the user attaches or
+// drops an outfit photo onto the existing "Anything else" field on
+// /look (see app/look/page.tsx's handlePhotoFile). Mirrors
+// /api/look/generate's shape (validate body, never trust the client
+// further, generic error on failure) but does a fundamentally
+// different, narrower thing: it ONLY returns a structured description
+// of what's visible in the photo (see lib/ai/gemini.ts's
+// analyzeOutfitPhoto and PhotoAnalysisSchema) — it never searches
+// eBay and never creates a Look. No auth is required, same as
+// /api/look/generate, so a guest can try this before onboarding.
 export async function POST(request: Request) {
   let body: unknown;
   try {

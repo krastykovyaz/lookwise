@@ -172,8 +172,7 @@
   "look": {
     "sectionTitle": "Ваш стиль",
     "buildALook": "Собрать образ",
-    "buildFromPhoto": "Собрать по фотографии",
-    "buildFromPhotoSubtitle": "Загрузите фото образа",
+    "attachPhoto": "Прикрепить фото",
     "save": "Сохранить образ",
     "unsave": "Убрать из сохранённых",
     "profileEmptyTitle": "Профиль стиля ещё не создан",
@@ -319,21 +318,8 @@
     },
     "whyItWorks": "Почему это работает",
     "photo": {
-      "title": "Собрать по фотографии",
-      "uploadPrompt": "Выберите или загрузите фото образа",
-      "changePhoto": "Выбрать другое фото",
-      "analyzeButton": "Проанализировать фото",
       "analyzing": "Анализируем фото…",
-      "errorGeneric": "Не удалось проанализировать фото. Попробуйте снова.",
-      "errorNotConfigured": "Анализ фото сейчас недоступен.",
-      "resultTitle": "Что мы распознали",
-      "itemsLabel": "Вещи",
-      "shoesLabel": "Обувь",
-      "accessoriesLabel": "Аксессуары",
-      "overallStyleLabel": "Общий стиль",
-      "noItemsDetected": "На фото ничего не распознано.",
-      "useDescription": "Использовать в моём образе",
-      "tryAgain": "Попробовать снова"
+      "errorGeneric": "Не удалось проанализировать фото. Попробуйте снова."
     }
   },
   "explore": {
