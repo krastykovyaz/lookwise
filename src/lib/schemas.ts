@@ -270,3 +270,38 @@ export const NowPaymentsIpnSchema = z.object({
   order_id: z.string().nullish(),
 });
 export type NowPaymentsIpnInput = z.infer<typeof NowPaymentsIpnSchema>;
+
+// What we require Gemini's outfit-photo analysis to look like before
+// it's ever shown to the user — same "anything that fails this is
+// treated as an invalid structured result" contract as
+// EbaySearchCriteriaSchema/LookPlanSchema above, just for a different
+// AI provider (see lib/ai/gemini.ts).
+const PhotoAnalysisItemSchema = z.object({
+  category: z.string().trim().min(1).max(60),
+  color: z.string().trim().min(1).max(60).nullish(),
+  style: z.string().trim().min(1).max(60).nullish(),
+  fit: z.string().trim().min(1).max(60).nullish(),
+});
+export const PhotoAnalysisSchema = z.object({
+  items: z.array(PhotoAnalysisItemSchema).max(20).optional().default([]),
+  shoes: z.array(PhotoAnalysisItemSchema).max(10).optional().default([]),
+  accessories: z.array(PhotoAnalysisItemSchema).max(10).optional().default([]),
+  overallStyle: z.array(z.string().trim().min(1).max(40)).max(10).optional().default([]),
+  // One or two natural-language sentences summarizing the outfit —
+  // written by Gemini in the same call, not derived client-side from
+  // the structured fields above, so it reads fluently rather than like
+  // a templated join. Feeds the /look page's existing free-text field
+  // (see app/look/photo/page.tsx and app/look/page.tsx).
+  description: z.string().trim().min(1).max(500),
+});
+export type PhotoAnalysis = z.infer<typeof PhotoAnalysisSchema>;
+
+// What the client sends to POST /api/look/photo-analyze. imageBase64 is
+// capped at ~11MB decoded (base64 is ~4/3 the size of the raw bytes) —
+// generous for a single outfit photo while keeping a hard ceiling on
+// the request body this route will ever try to parse/forward.
+export const PhotoAnalyzeRequestSchema = z.object({
+  imageBase64: z.string().trim().min(1).max(15_000_000),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
+export type PhotoAnalyzeRequestInput = z.infer<typeof PhotoAnalyzeRequestSchema>;

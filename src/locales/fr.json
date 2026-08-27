@@ -172,6 +172,8 @@
   "look": {
     "sectionTitle": "Votre style",
     "buildALook": "Composer une tenue",
+    "buildFromPhoto": "Créer à partir d'une photo",
+    "buildFromPhotoSubtitle": "Téléchargez une photo de votre tenue",
     "save": "Enregistrer ce look",
     "unsave": "Retirer des looks enregistrés",
     "profileEmptyTitle": "Aucun profil de style pour l'instant",
@@ -315,7 +317,24 @@
       "women": "Femme",
       "men": "Homme"
     },
-    "whyItWorks": "Pourquoi ça fonctionne"
+    "whyItWorks": "Pourquoi ça fonctionne",
+    "photo": {
+      "title": "Créer à partir d'une photo",
+      "uploadPrompt": "Sélectionnez ou téléchargez une photo de tenue",
+      "changePhoto": "Choisir une autre photo",
+      "analyzeButton": "Analyser la photo",
+      "analyzing": "Analyse de votre photo…",
+      "errorGeneric": "Impossible d'analyser cette photo. Veuillez réessayer.",
+      "errorNotConfigured": "L'analyse photo n'est pas disponible pour le moment.",
+      "resultTitle": "Ce que nous avons reconnu",
+      "itemsLabel": "Articles",
+      "shoesLabel": "Chaussures",
+      "accessoriesLabel": "Accessoires",
+      "overallStyleLabel": "Style général",
+      "noItemsDetected": "Aucun article reconnu sur cette photo.",
+      "useDescription": "Utiliser pour ma tenue",
+      "tryAgain": "Réessayer"
+    }
   },
   "explore": {
     "title": "Explorer",

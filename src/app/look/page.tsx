@@ -110,6 +110,15 @@ export default function LookPage() {
     setHistoryId(new URLSearchParams(window.location.search).get("historyId"));
   }, []);
 
+  // Seeds the existing "Anything else" field from a photo analysis
+  // (see app/look/photo/page.tsx) — same one-shot query-param read as
+  // historyId above, not a new field, and the user can still freely
+  // edit it afterward like anything else they'd have typed themselves.
+  useEffect(() => {
+    const photoDescription = new URLSearchParams(window.location.search).get("photoDescription");
+    if (photoDescription) setFreeText(photoDescription);
+  }, []);
+
   useEffect(() => {
     if (historyId) {
       const historicalEntry = looks.find((entry) => entry.id === historyId);

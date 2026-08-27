@@ -172,6 +172,8 @@
   "look": {
     "sectionTitle": "Your Style",
     "buildALook": "Build a Look",
+    "buildFromPhoto": "Build from photo",
+    "buildFromPhotoSubtitle": "Upload a photo of your look",
     "save": "Save this look",
     "unsave": "Remove from saved looks",
     "profileEmptyTitle": "No style profile yet",
@@ -315,7 +317,24 @@
       "women": "Women's",
       "men": "Men's"
     },
-    "whyItWorks": "Why it works"
+    "whyItWorks": "Why it works",
+    "photo": {
+      "title": "Build from photo",
+      "uploadPrompt": "Select or upload a photo of an outfit",
+      "changePhoto": "Choose a different photo",
+      "analyzeButton": "Analyze photo",
+      "analyzing": "Analyzing your photo…",
+      "errorGeneric": "Could not analyze this photo. Please try again.",
+      "errorNotConfigured": "Photo analysis isn't available right now.",
+      "resultTitle": "What we recognized",
+      "itemsLabel": "Items",
+      "shoesLabel": "Shoes",
+      "accessoriesLabel": "Accessories",
+      "overallStyleLabel": "Overall style",
+      "noItemsDetected": "No items were recognized in this photo.",
+      "useDescription": "Use this for my Look",
+      "tryAgain": "Try again"
+    }
   },
   "explore": {
     "title": "Explore",

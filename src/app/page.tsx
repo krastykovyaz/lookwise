@@ -173,6 +173,22 @@ export default function BuyerPage() {
         {t("look.buildALook")}
       </Link>
 
+      <Link
+        href="/look/photo"
+        className="mt-2.5 flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 hover:border-foreground/25 transition-colors"
+      >
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background text-[16px]"
+          aria-hidden
+        >
+          📸
+        </span>
+        <span className="flex flex-col text-left">
+          <span className="text-[14px] font-medium text-foreground">{t("look.buildFromPhoto")}</span>
+          <span className="text-[12px] text-muted">{t("look.buildFromPhotoSubtitle")}</span>
+        </span>
+      </Link>
+
       {isLoaded && hasOnboarded && profile && (
         <div className="mt-2.5 flex items-center justify-between px-1">
           <p className="text-[11.5px] leading-4 text-muted">
