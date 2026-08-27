@@ -10,7 +10,7 @@ export type SubscriptionRow = typeof schema.subscriptions.$inferSelect;
 // way or the other. Used both to find a reusable pending payment
 // (section 2: "prevent duplicate active/pending payment creation") and,
 // by exclusion, to know finished/failed/expired/refunded are terminal.
-const IN_FLIGHT_STATUSES = ["waiting", "confirming", "confirmed", "sending", "partially_paid"] as const;
+export const IN_FLIGHT_STATUSES = ["waiting", "confirming", "confirmed", "sending", "partially_paid"] as const;
 
 // How long a "waiting" payment is still considered reusable before a
 // fresh payment-creation request gets a brand new one instead. Past
@@ -19,6 +19,31 @@ const IN_FLIGHT_STATUSES = ["waiting", "confirming", "confirmed", "sending", "pa
 // number, per the same "easy to change later" spirit as the
 // subscription duration.
 const IN_FLIGHT_REUSE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+// A DIFFERENT concern from the reuse window above: that one decides
+// whether a NEW create-payment click reuses a recent row; this one
+// decides whether an OLD in-flight row is still worth actively
+// *displaying* (the status route's "Continue Payment" link) at all.
+// getLatestPaymentForUser below has no staleness concept of its own —
+// it's correctly just "the most recent row" — so a "waiting" payment
+// nobody ever completed would otherwise stay the "latest payment"
+// forever, and the frontend renders any in-flight payment as "Continue
+// Payment" pointing at that same old checkout URL — permanently hiding
+// the fresh Subscribe button behind a dead link. Discovered in
+// production when a days-old abandoned payment kept resurfacing on
+// every retest regardless of backend pricing changes. A day is
+// deliberately more generous than the 1-hour reuse window above — a
+// real slow crypto transfer can take hours; this is only about
+// eventually treating a payment nobody ever sent funds for as
+// abandoned.
+export const STALE_IN_FLIGHT_DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function isStaleInFlight(payment: { status: string; createdAt: Date }): boolean {
+  return (
+    (IN_FLIGHT_STATUSES as readonly string[]).includes(payment.status) &&
+    Date.now() - payment.createdAt.getTime() > STALE_IN_FLIGHT_DISPLAY_WINDOW_MS
+  );
+}
 
 /** The most recent still-in-flight payment for this user, if any and if
  *  recent enough to still be worth reusing rather than creating a new

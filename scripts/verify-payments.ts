@@ -73,6 +73,9 @@ async function main() {
     createPaymentRecord,
     getPaymentByProviderPaymentId,
     markSubscriptionExpired,
+    getLatestPaymentForUser,
+    isStaleInFlight,
+    STALE_IN_FLIGHT_DISPLAY_WINDOW_MS,
   } = await import("../src/lib/db/repositories/payments");
   const { SUBSCRIPTION_PRICE_AMOUNT, SUBSCRIPTION_PRICE_CURRENCY, PREFERRED_PAY_CURRENCY } = await import(
     "../src/lib/payments/pricing"
@@ -658,6 +661,70 @@ async function main() {
   check("the old expired row was flipped away from 'active' (no longer blocks the partial unique index)", oldSubRowAfterRenewal.status !== "active");
   const allSubsForE = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userE.id));
   check("user E has exactly one row with status='active' after renewal (partial unique index intact)", allSubsForE.filter((s) => s.status === "active").length === 1);
+
+  // --- Stale in-flight payments must not permanently block Subscribe ------
+  // Discovered in production: a "waiting" payment nobody ever completed
+  // is forever the "latest payment" (getLatestPaymentForUser has no
+  // staleness concept of its own, correctly) — but the frontend renders
+  // ANY in-flight payment as "Continue Payment" pointing at that same
+  // dead checkout URL, so an abandoned payment silently hid the fresh
+  // Subscribe button from that user forever, regardless of any backend
+  // pricing/currency change. isStaleInFlight (status route) is the fix.
+  check(
+    "a fresh in-flight payment is never considered stale",
+    !isStaleInFlight({ status: "waiting", createdAt: new Date() }),
+  );
+  check(
+    "an in-flight payment just under the staleness window is not yet stale",
+    !isStaleInFlight({
+      status: "waiting",
+      createdAt: new Date(Date.now() - (STALE_IN_FLIGHT_DISPLAY_WINDOW_MS - 60_000)),
+    }),
+  );
+  check(
+    "an in-flight payment past the staleness window is stale",
+    isStaleInFlight({
+      status: "waiting",
+      createdAt: new Date(Date.now() - (STALE_IN_FLIGHT_DISPLAY_WINDOW_MS + 60_000)),
+    }),
+  );
+  for (const terminalStatus of ["finished", "failed", "expired", "refunded"]) {
+    check(
+      `a terminal ("${terminalStatus}") payment is never "stale in-flight" regardless of age — it's not in-flight at all`,
+      !isStaleInFlight({ status: terminalStatus, createdAt: new Date(Date.now() - STALE_IN_FLIGHT_DISPLAY_WINDOW_MS * 10) }),
+    );
+  }
+
+  // Integration-level: reproduces the exact production scenario — an
+  // old abandoned "waiting" payment, days old, still sits as this
+  // user's most recent row.
+  const [userStalePayment] = await db.insert(schema.users).values({ email: "stale-payment@example.com" }).returning();
+  await createPaymentRecord({
+    id: crypto.randomUUID(),
+    userId: userStalePayment.id,
+    providerPaymentId: "np-stale-" + crypto.randomUUID(),
+    orderId: crypto.randomUUID(),
+    priceAmount: 1,
+    priceCurrency: "eur",
+    status: "waiting",
+  });
+  // Backdate it past the window directly (createPaymentRecord always
+  // stamps "now" — there's no created-in-the-past API, nor should there
+  // be one outside a test).
+  const staleRow = await getLatestPaymentForUser(userStalePayment.id);
+  await db
+    .update(schema.payments)
+    .set({ createdAt: new Date(Date.now() - STALE_IN_FLIGHT_DISPLAY_WINDOW_MS * 2) })
+    .where(eq(schema.payments.id, staleRow!.id));
+  const rebackdated = await getLatestPaymentForUser(userStalePayment.id);
+  check(
+    "getLatestPaymentForUser itself still returns the old row unfiltered (it's a plain 'most recent' read, by design)",
+    rebackdated?.id === staleRow!.id,
+  );
+  check(
+    "isStaleInFlight correctly flags that same row as stale once it's backdated past the window",
+    isStaleInFlight(rebackdated!),
+  );
 
   rmSync(dir, { recursive: true, force: true });
 
