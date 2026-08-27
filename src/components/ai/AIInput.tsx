@@ -64,7 +64,7 @@ export function AIInput({ value, onChange, onSubmit }: AIInputProps) {
         }}
         placeholder={t("buyer.placeholder")}
         rows={2}
-        className="w-full resize-none bg-transparent text-[15px] leading-6 text-foreground placeholder:text-muted-soft outline-none"
+        className="w-full resize-none bg-transparent text-[16px] leading-6 text-foreground placeholder:text-muted-soft outline-none"
       />
       <div className="mt-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">

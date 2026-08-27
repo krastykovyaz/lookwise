@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/auth/session";
-import { getLatestPaymentForUser } from "@/lib/db/repositories/payments";
+import { getLatestPaymentForUser, isStaleInFlight } from "@/lib/db/repositories/payments";
 import { getUserSubscription } from "@/lib/payments/entitlement";
 
 export const runtime = "nodejs";
@@ -25,10 +25,11 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const [subscription, payment] = await Promise.all([
+    const [subscription, latestPayment] = await Promise.all([
       getUserSubscription(userId),
       getLatestPaymentForUser(userId),
     ]);
+    const payment = latestPayment && !isStaleInFlight(latestPayment) ? latestPayment : null;
 
     return NextResponse.json({
       subscription:

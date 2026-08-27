@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db/client";
-import type { UserStyleProfile, UserLocation, BudgetRangeId, StyleArchetypeId } from "@/types/style";
+import type { UserStyleProfile, UserLocation, BudgetRangeId, StyleArchetypeId, LookGender } from "@/types/style";
 import { computeProfileCompleteness } from "@/types/style";
 
 type StyleProfileRow = typeof schema.styleProfiles.$inferSelect;
@@ -29,6 +29,7 @@ function rowToProfile(row: StyleProfileRow): UserStyleProfile {
     location,
     favoriteCategories: row.favoriteCategories ?? [],
     dislikedCategories: row.dislikedCategories ?? [],
+    gender: (row.genderPreference as LookGender | null) ?? null,
     profileCompleteness: computeProfileCompleteness({
       styleArchetypes: (row.styleArchetypes as StyleArchetypeId[]) ?? [],
       budgetRange: row.budgetRange as BudgetRangeId | null,
@@ -89,6 +90,7 @@ export async function upsertProfile(userId: string, profile: UserStyleProfile): 
     locationSource: profile.location?.source ?? null,
     favoriteCategories: profile.favoriteCategories,
     dislikedCategories: profile.dislikedCategories,
+    genderPreference: profile.gender ?? null,
     updatedAt: now,
   };
 

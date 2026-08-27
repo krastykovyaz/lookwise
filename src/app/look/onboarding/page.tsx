@@ -276,7 +276,7 @@ function LookOnboardingForm() {
               value={cityInput}
               onChange={(e) => setCityInput(e.target.value)}
               placeholder={t("look.cityPlaceholder")}
-              className="w-full rounded-2xl border border-border bg-surface px-4 py-3.5 text-[14px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
+              className="w-full rounded-2xl border border-border bg-surface px-4 py-3.5 text-[16px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
             />
           </div>
         </div>

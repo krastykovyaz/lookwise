@@ -11,6 +11,7 @@ import {
 import { useSession } from "next-auth/react";
 import type {
   BudgetRangeId,
+  LookGender,
   StyleArchetypeId,
   UserLocation,
   UserStyleProfile,
@@ -56,6 +57,9 @@ interface StyleProfileContextValue {
     styleArchetypes: StyleArchetypeId[];
     budgetRange: BudgetRangeId | null;
     location: UserLocation | null;
+    /** Omit to leave the existing value untouched — onboarding's save
+     *  doesn't know about gender and shouldn't accidentally clear it. */
+    gender?: LookGender | null;
   }) => void;
   clearProfile: () => void;
   /** Re-fetches the authenticated user's profile from the server.
@@ -101,6 +105,7 @@ export function StyleProfileProvider({ children }: { children: React.ReactNode }
       styleArchetypes: StyleArchetypeId[];
       budgetRange: BudgetRangeId | null;
       location: UserLocation | null;
+      gender?: LookGender | null;
     }) => {
       const base = profile ?? createEmptyStyleProfile();
       const next: UserStyleProfile = {
@@ -108,6 +113,7 @@ export function StyleProfileProvider({ children }: { children: React.ReactNode }
         styleArchetypes: partial.styleArchetypes,
         budgetRange: partial.budgetRange,
         location: partial.location,
+        gender: partial.gender !== undefined ? partial.gender : base.gender,
         updatedAt: new Date().toISOString(),
       };
       next.profileCompleteness = computeProfileCompleteness(next);

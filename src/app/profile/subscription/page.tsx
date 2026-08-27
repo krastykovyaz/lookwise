@@ -223,7 +223,7 @@ export default function SubscriptionPage() {
             {viewState.kind === "none" && (
               <>
                 <p className="mt-3 text-[16px] font-semibold text-foreground">{t("subscription.productName")}</p>
-                <p className="mt-1 text-[20px] font-semibold text-foreground">€1</p>
+                <p className="mt-1 text-[20px] font-semibold text-foreground">1 USDT</p>
                 <p className="mt-0.5 text-[13px] text-muted">{t("subscription.durationLine")}</p>
                 <button
                   type="button"

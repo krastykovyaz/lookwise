@@ -62,7 +62,9 @@ async function main() {
   const { db, schema } = await import("../src/lib/db/client");
   const { migrate } = await import("drizzle-orm/better-sqlite3/migrator");
   const { eq } = await import("drizzle-orm");
-  const { createSubscriptionPayment } = await import("../src/lib/payments/nowpayments/checkout");
+  const { createSubscriptionPayment, SubscriptionPriceBelowMinimumError } = await import(
+    "../src/lib/payments/nowpayments/checkout"
+  );
   const { processIpnEvent } = await import("../src/lib/payments/nowpayments/webhook");
   const { verifyIpnSignature } = await import("../src/lib/payments/nowpayments/ipn");
   const {
@@ -71,6 +73,9 @@ async function main() {
     createPaymentRecord,
     getPaymentByProviderPaymentId,
     markSubscriptionExpired,
+    getLatestPaymentForUser,
+    isStaleInFlight,
+    STALE_IN_FLIGHT_DISPLAY_WINDOW_MS,
   } = await import("../src/lib/db/repositories/payments");
   const { SUBSCRIPTION_PRICE_AMOUNT, SUBSCRIPTION_PRICE_CURRENCY, PREFERRED_PAY_CURRENCY } = await import(
     "../src/lib/payments/pricing"
@@ -253,9 +258,9 @@ async function main() {
         id: fakeInvoiceId,
         order_id: (input as { order_id: string }).order_id,
         order_description: "Lookwise subscription",
-        price_amount: 1,
-        price_currency: "eur",
-        pay_currency: "usdttrc20",
+        price_amount: SUBSCRIPTION_PRICE_AMOUNT,
+        price_currency: SUBSCRIPTION_PRICE_CURRENCY,
+        pay_currency: "usdtbsc",
         invoice_url: fakeInvoiceUrl,
         success_url: null,
         cancel_url: null,
@@ -263,7 +268,12 @@ async function main() {
         updated_at: new Date().toISOString(),
       };
     },
-    getSupportedCurrencies: async () => ({ currencies: ["usdttrc20", "btc", "eth"] }),
+    getSupportedCurrencies: async () => ({ currencies: ["usdtbsc", "btc", "eth"] }),
+    getMinAmount: async (currencyFrom: string, currencyTo: string) => ({
+      currency_from: currencyFrom,
+      currency_to: currencyTo,
+      min_amount: SUBSCRIPTION_PRICE_AMOUNT - 0.5,
+    }),
   };
 
   const view = await createSubscriptionPayment(userA.id, fakeDeps);
@@ -280,21 +290,20 @@ async function main() {
   ].sort().join(","));
 
   check(
-    "€1 price cannot be overridden — the actual NOWPayments call always used the fixed constants",
+    "fixed price cannot be overridden — the actual NOWPayments call always used the fixed constants",
     (capturedCreateInput as { price_amount: number })?.price_amount === SUBSCRIPTION_PRICE_AMOUNT &&
       (capturedCreateInput as { price_currency: string })?.price_currency === SUBSCRIPTION_PRICE_CURRENCY &&
-      SUBSCRIPTION_PRICE_AMOUNT === 1 &&
-      SUBSCRIPTION_PRICE_CURRENCY === "eur",
+      SUBSCRIPTION_PRICE_CURRENCY === "usdtbsc",
   );
   check(
-    "USDT TRC20 preferred as pay_currency",
+    "USDT BSC (BEP20) preferred as pay_currency",
     (capturedCreateInput as { pay_currency: string })?.pay_currency === PREFERRED_PAY_CURRENCY &&
-      PREFERRED_PAY_CURRENCY === "usdttrc20",
+      PREFERRED_PAY_CURRENCY === "usdtbsc",
   );
 
   const [persisted] = await db.select().from(schema.payments).where(eq(schema.payments.userId, userA.id));
   check("payment row persisted with the userId", persisted?.userId === userA.id);
-  check("payment row persisted with fixed price fields", persisted?.priceAmount === 1 && persisted?.priceCurrency === "eur");
+  check("payment row persisted with fixed price fields", persisted?.priceAmount === SUBSCRIPTION_PRICE_AMOUNT && persisted?.priceCurrency === SUBSCRIPTION_PRICE_CURRENCY);
   check("payment row status matches the created payment's initial status", persisted?.status === "waiting");
   check("payment row persisted the checkout URL", persisted?.paymentUrl === fakeInvoiceUrl);
   const orderIdForA = persisted!.orderId;
@@ -313,6 +322,73 @@ async function main() {
   check("reusing an in-flight payment returns the same checkout URL", secondView.paymentUrl === fakeInvoiceUrl);
   const allPaymentsForA = await db.select().from(schema.payments).where(eq(schema.payments.userId, userA.id));
   check("no duplicate payment row was created", allPaymentsForA.length === 1);
+
+  // --- Minimum-amount gate: never hardcoded, always queried live from
+  // NOWPayments before any invoice is created (section 3/4 of this
+  // stage's spec — this is the exact mechanism the €1/USDT TRC20 price
+  // was silently violating in production before this check existed). ---
+  const [userMinGateAbove] = await db.insert(schema.users).values({ email: "min-gate-above@example.com" }).returning();
+  const fakeInvoiceIdForMinGate = "inv-" + crypto.randomUUID();
+  const fakeInvoiceUrlForMinGate = `https://nowpayments.io/payment/?iid=${fakeInvoiceIdForMinGate}`;
+  let minAmountArgsAbove: [string, string] | null = null;
+  const viewAboveMin = await createSubscriptionPayment(userMinGateAbove.id, {
+    ...fakeDeps,
+    createInvoice: async (input: unknown) => ({
+      id: fakeInvoiceIdForMinGate,
+      order_id: (input as { order_id: string }).order_id,
+      order_description: "Lookwise subscription",
+      price_amount: SUBSCRIPTION_PRICE_AMOUNT,
+      price_currency: SUBSCRIPTION_PRICE_CURRENCY,
+      pay_currency: "usdtbsc",
+      invoice_url: fakeInvoiceUrlForMinGate,
+      success_url: null,
+      cancel_url: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
+    getMinAmount: async (currencyFrom: string, currencyTo: string) => {
+      minAmountArgsAbove = [currencyFrom, currencyTo];
+      return { currency_from: currencyFrom, currency_to: currencyTo, min_amount: SUBSCRIPTION_PRICE_AMOUNT - 0.5 };
+    },
+  });
+  check(
+    "min-amount is queried for the exact fixed price-currency -> pay-currency pair",
+    minAmountArgsAbove !== null &&
+      (minAmountArgsAbove as [string, string])[0] === SUBSCRIPTION_PRICE_CURRENCY &&
+      (minAmountArgsAbove as [string, string])[1] === PREFERRED_PAY_CURRENCY,
+  );
+  check("price above the live minimum -> invoice is created normally", viewAboveMin.paymentId === `invoice:${fakeInvoiceIdForMinGate}`);
+
+  const [userMinGateBelow] = await db.insert(schema.users).values({ email: "min-gate-below@example.com" }).returning();
+  let createInvoiceCalledForBelowMin = false;
+  let belowMinError: unknown = null;
+  try {
+    await createSubscriptionPayment(userMinGateBelow.id, {
+      ...fakeDeps,
+      createInvoice: async (input: unknown) => {
+        createInvoiceCalledForBelowMin = true;
+        return fakeDeps.createInvoice(input);
+      },
+      getMinAmount: async (currencyFrom: string, currencyTo: string) => ({
+        currency_from: currencyFrom,
+        currency_to: currencyTo,
+        min_amount: SUBSCRIPTION_PRICE_AMOUNT + 15.5,
+      }),
+    });
+  } catch (err) {
+    belowMinError = err;
+  }
+  check("price below the live minimum throws SubscriptionPriceBelowMinimumError", belowMinError instanceof SubscriptionPriceBelowMinimumError);
+  check(
+    "the thrown error carries the live minimum that was actually returned",
+    (belowMinError as InstanceType<typeof SubscriptionPriceBelowMinimumError> | null)?.minAmount === SUBSCRIPTION_PRICE_AMOUNT + 15.5,
+  );
+  check("createInvoice is never called when the price is below the minimum", !createInvoiceCalledForBelowMin);
+  const paymentsForBelowMinUser = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.userId, userMinGateBelow.id));
+  check("no payment row is persisted when the price is below the minimum", paymentsForBelowMinUser.length === 0);
 
   // --- IPN signature verification ---------------------------------------
   const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET!;
@@ -585,6 +661,70 @@ async function main() {
   check("the old expired row was flipped away from 'active' (no longer blocks the partial unique index)", oldSubRowAfterRenewal.status !== "active");
   const allSubsForE = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userE.id));
   check("user E has exactly one row with status='active' after renewal (partial unique index intact)", allSubsForE.filter((s) => s.status === "active").length === 1);
+
+  // --- Stale in-flight payments must not permanently block Subscribe ------
+  // Discovered in production: a "waiting" payment nobody ever completed
+  // is forever the "latest payment" (getLatestPaymentForUser has no
+  // staleness concept of its own, correctly) — but the frontend renders
+  // ANY in-flight payment as "Continue Payment" pointing at that same
+  // dead checkout URL, so an abandoned payment silently hid the fresh
+  // Subscribe button from that user forever, regardless of any backend
+  // pricing/currency change. isStaleInFlight (status route) is the fix.
+  check(
+    "a fresh in-flight payment is never considered stale",
+    !isStaleInFlight({ status: "waiting", createdAt: new Date() }),
+  );
+  check(
+    "an in-flight payment just under the staleness window is not yet stale",
+    !isStaleInFlight({
+      status: "waiting",
+      createdAt: new Date(Date.now() - (STALE_IN_FLIGHT_DISPLAY_WINDOW_MS - 60_000)),
+    }),
+  );
+  check(
+    "an in-flight payment past the staleness window is stale",
+    isStaleInFlight({
+      status: "waiting",
+      createdAt: new Date(Date.now() - (STALE_IN_FLIGHT_DISPLAY_WINDOW_MS + 60_000)),
+    }),
+  );
+  for (const terminalStatus of ["finished", "failed", "expired", "refunded"]) {
+    check(
+      `a terminal ("${terminalStatus}") payment is never "stale in-flight" regardless of age — it's not in-flight at all`,
+      !isStaleInFlight({ status: terminalStatus, createdAt: new Date(Date.now() - STALE_IN_FLIGHT_DISPLAY_WINDOW_MS * 10) }),
+    );
+  }
+
+  // Integration-level: reproduces the exact production scenario — an
+  // old abandoned "waiting" payment, days old, still sits as this
+  // user's most recent row.
+  const [userStalePayment] = await db.insert(schema.users).values({ email: "stale-payment@example.com" }).returning();
+  await createPaymentRecord({
+    id: crypto.randomUUID(),
+    userId: userStalePayment.id,
+    providerPaymentId: "np-stale-" + crypto.randomUUID(),
+    orderId: crypto.randomUUID(),
+    priceAmount: 1,
+    priceCurrency: "eur",
+    status: "waiting",
+  });
+  // Backdate it past the window directly (createPaymentRecord always
+  // stamps "now" — there's no created-in-the-past API, nor should there
+  // be one outside a test).
+  const staleRow = await getLatestPaymentForUser(userStalePayment.id);
+  await db
+    .update(schema.payments)
+    .set({ createdAt: new Date(Date.now() - STALE_IN_FLIGHT_DISPLAY_WINDOW_MS * 2) })
+    .where(eq(schema.payments.id, staleRow!.id));
+  const rebackdated = await getLatestPaymentForUser(userStalePayment.id);
+  check(
+    "getLatestPaymentForUser itself still returns the old row unfiltered (it's a plain 'most recent' read, by design)",
+    rebackdated?.id === staleRow!.id,
+  );
+  check(
+    "isStaleInFlight correctly flags that same row as stale once it's backdated past the window",
+    isStaleInFlight(rebackdated!),
+  );
 
   rmSync(dir, { recursive: true, force: true });
 

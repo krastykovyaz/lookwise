@@ -34,6 +34,7 @@ export function buildLookContext(
 export interface OutfitComponentSearchIntent {
   query: string;
   maxPrice?: number | null;
+  minPrice?: number | null;
   currency?: string | null;
   color?: string | null;
   deliveryCountry?: string | null;
@@ -52,6 +53,7 @@ class EbayProductSearchProvider implements ProductSearchProvider {
       condition: [],
       color: intent.color ?? null,
       maxPrice: intent.maxPrice ?? null,
+      minPrice: intent.minPrice ?? null,
       currency: intent.currency ?? null,
       deliveryCountry: intent.deliveryCountry ?? null,
       size: null,
@@ -152,6 +154,28 @@ type ComponentSearchResult = {
   products: Product[];
 };
 
+/** Turns the user's selected budget band (a *total* for the whole
+ *  outfit — see profileBudgetText) into a real per-component price
+ *  floor for eBay, split evenly across however many components the AI
+ *  plan has. Previously nothing did this: the AI's own per-component
+ *  maxPrice was the only price signal ever sent to eBay, so a "700+"
+ *  selection could silently return an outfit costing a fraction of
+ *  that. If the AI's proposed ceiling for a component is below the
+ *  computed floor, the ceiling is dropped rather than sent — a
+ *  price:[min..max] range with min > max would just return nothing for
+ *  that component, and the floor reflects what the user actually
+ *  chose. Exported for direct unit testing (see verify-look.ts). */
+export function computeComponentSearchPriceBounds(
+  componentMaxPrice: number | null,
+  budgetRange: UserStyleProfile["budgetRange"],
+  componentCount: number,
+): { minPrice: number | null; maxPrice: number | null } {
+  const bounds = budgetRange ? BUDGET_RANGE_BOUNDS[budgetRange] : null;
+  const minPrice = bounds && bounds.min > 0 && componentCount > 0 ? bounds.min / componentCount : null;
+  const maxPrice = componentMaxPrice != null && minPrice != null && componentMaxPrice < minPrice ? null : componentMaxPrice;
+  return { minPrice, maxPrice };
+}
+
 // Men's and women's items must never end up in the same generated
 // look (a hard rule, not a soft preference — see gendersCompatible in
 // lib/recommendation/gender.ts, which Explore's own look assembly
@@ -245,13 +269,30 @@ class AIProductLookGenerator implements LookGenerator {
       context.profile.location?.country ??
       null;
 
+    // The AI plan's own per-component maxPrice is the only price signal
+    // this pipeline used to send to eBay — nothing ever enforced the
+    // user's selected budget band (BUDGET_RANGE_BOUNDS) itself, so a
+    // "700+" selection could silently return an outfit costing a
+    // fraction of that. profileBudgetText tells the model the band is a
+    // *total*, so split it evenly across however many components the
+    // model planned and pass that as a real per-component floor to
+    // eBay — the same "server-side filter as a soft hint" pattern
+    // candidateSource.ts already uses for Explore.
+    const componentCount = parsed.data.components.length;
+
     const results = await Promise.all(
       parsed.data.components.map(async (component) => {
         try {
+          const { minPrice, maxPrice } = computeComponentSearchPriceBounds(
+            component.maxPrice ?? null,
+            context.profile.budgetRange,
+            componentCount,
+          );
           const products = await productSearchProvider.search({
             query: `${component.searchQuery} ${context.gender === "women" ? "women's" : "men's"}`,
             color: component.color ?? null,
-            maxPrice: component.maxPrice ?? null,
+            maxPrice,
+            minPrice,
             currency,
             deliveryCountry,
           });

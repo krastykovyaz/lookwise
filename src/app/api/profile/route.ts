@@ -27,6 +27,7 @@ const profileInputSchema = z.object({
   location: locationSchema,
   favoriteCategories: z.array(z.string()),
   dislikedCategories: z.array(z.string()),
+  gender: z.enum(["men", "women"]).nullable(),
   profileCompleteness: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),

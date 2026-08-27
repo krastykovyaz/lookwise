@@ -53,19 +53,29 @@ export function ShareButton({ resolvePath, shareTitle, shareText, className }: S
       if (referralCode) url.searchParams.set("ref", referralCode);
       const href = url.toString();
 
+      // Copy to clipboard unconditionally, before offering the native
+      // share sheet — not just as a fallback for when that sheet is
+      // cancelled. A successful native share (e.g. picking WhatsApp)
+      // used to short-circuit past this entirely, so the link was
+      // never actually on the clipboard even though a share visibly
+      // happened — leaving nothing to paste anywhere else afterward.
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(href);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+          console.error("[ShareButton] clipboard write failed:", err);
+        }
+      }
+
       if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
         try {
           await navigator.share({ title: shareTitle, text: shareText, url: href });
-          return;
         } catch {
           // User cancelled the native sheet, or the platform rejected
-          // it — fall back to copy so the click still does something.
+          // it — the clipboard copy above already happened either way.
         }
-      }
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(href);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
       }
     } catch (err) {
       console.error("[ShareButton] share failed:", err);

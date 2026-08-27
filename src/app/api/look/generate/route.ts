@@ -51,6 +51,10 @@ export async function POST(request: Request) {
       : null,
     favoriteCategories: rawProfile.favoriteCategories,
     dislikedCategories: rawProfile.dislikedCategories,
+    // Not part of this request schema — the gender that actually drives
+    // this generation is the separate, required top-level `gender`
+    // field above, not the persisted profile preference.
+    gender: null,
     profileCompleteness: rawProfile.profileCompleteness,
     createdAt: rawProfile.createdAt,
     updatedAt: rawProfile.updatedAt,

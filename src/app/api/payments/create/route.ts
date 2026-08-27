@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/auth/session";
-import { createSubscriptionPayment } from "@/lib/payments/nowpayments/checkout";
+import { createSubscriptionPayment, SubscriptionPriceBelowMinimumError } from "@/lib/payments/nowpayments/checkout";
 import { NowPaymentsConfigError } from "@/lib/payments/nowpayments/env";
 import { NowPaymentsApiError } from "@/lib/payments/nowpayments/client";
 
@@ -20,6 +20,13 @@ export async function POST() {
     const payment = await createSubscriptionPayment(userId);
     return NextResponse.json({ payment });
   } catch (err) {
+    if (err instanceof SubscriptionPriceBelowMinimumError) {
+      console.error("[POST /api/payments/create] price below NOWPayments minimum:", err.message);
+      return NextResponse.json(
+        { error: "price_below_minimum", message: "Payments are temporarily unavailable. Please try again later." },
+        { status: 422 },
+      );
+    }
     if (err instanceof NowPaymentsConfigError) {
       return NextResponse.json(
         { error: "payments_not_configured", message: "Payments are not configured yet." },

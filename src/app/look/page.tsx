@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Sparkles, MapPin, CloudSun, RefreshCw, ThumbsUp, ThumbsDown, ChevronLeft, Bookmark } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useStyleProfile } from "@/lib/style/context";
@@ -37,8 +38,11 @@ type GenerateState = "idle" | "pending" | "error";
 export default function LookPage() {
   const { t, locale } = useI18n();
   const router = useRouter();
-  const { profile, isLoaded, hasOnboarded } = useStyleProfile();
-  const { latestLook, looks, recordLookHistory, recordViewedLook } = useLookHistory();
+  const { status: sessionStatus } = useSession();
+  const isAuthenticated = sessionStatus === "authenticated";
+  const { profile, isLoaded, hasOnboarded, saveProfile } = useStyleProfile();
+  const { latestLook, looks, recordLookHistory, recordViewedLook, isGeneratingLook, setIsGeneratingLook } =
+    useLookHistory();
   const { isSaved, toggleSaved } = useSavedLooks();
   const { signals, record } = usePreferenceSignals();
   const { getSignal, isPending, ensureLoaded, toggle } = useProductSignals();
@@ -56,6 +60,19 @@ export default function LookPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const recordedHistoryIdRef = useRef<string | null>(null);
+  // "Create my look" is a fire-and-forget request (intentionally: the
+  // user can navigate away and the generation still completes and gets
+  // recorded — see recordViewedLook below). Its .then() closure can
+  // therefore run long after this component has unmounted; this guards
+  // the one thing in that closure with a side effect on OTHER pages
+  // (router.replace) so a finished generation never yanks the user back
+  // to /look from wherever they've since navigated to.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   // Caches this browser session's public snapshot id per local look id
   // (see /api/look/share) so re-clicking Share on the same look never
   // materializes a second snapshot row. Keyed off generatedLook.id,
@@ -69,6 +86,25 @@ export default function LookPage() {
       router.replace("/look/onboarding?returnTo=/look");
     }
   }, [isLoaded, hasOnboarded, router]);
+
+  // Restore the last gender pick, but only for signed-in users — a
+  // guest's choice is deliberately never remembered (lookGender's own
+  // useState default above is the reset every fresh session/guest gets).
+  useEffect(() => {
+    if (isAuthenticated && profile?.gender) setLookGender(profile.gender);
+  }, [isAuthenticated, profile?.gender]);
+
+  const handleGenderChange = (value: LookGender) => {
+    setLookGender(value);
+    if (isAuthenticated && profile) {
+      saveProfile({
+        styleArchetypes: profile.styleArchetypes,
+        budgetRange: profile.budgetRange,
+        location: profile.location,
+        gender: value,
+      });
+    }
+  };
 
   useEffect(() => {
     setHistoryId(new URLSearchParams(window.location.search).get("historyId"));
@@ -111,8 +147,13 @@ export default function LookPage() {
       : null);
 
   const handleCreateLook = async () => {
-    if (!profile) return;
+    if (!profile || isGeneratingLook) return;
     setGenerateState("pending");
+    // Root-level (survives navigation), not gated on isMountedRef below
+    // — the button's pending state must reflect whether a generation is
+    // actually still running, regardless of which page is on screen
+    // when it starts or finishes.
+    setIsGeneratingLook(true);
 
     const currentLocation: LookContextLocation | null = activeCoordinates
       ? {
@@ -155,12 +196,23 @@ export default function LookPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setGenerateState("error");
+        setIsGeneratingLook(false);
+        if (isMountedRef.current) setGenerateState("error");
         return;
       }
       const look = data.look as GeneratedLook;
-      const saved = recordLookHistory(look);
+      // recordViewedLook (not recordLookHistory) so a freshly generated
+      // look is immediately eligible for Overview's "Recently viewed"
+      // list — that list filters on viewedAt being set, and generating
+      // a look is exactly the kind of "just saw this" moment that
+      // should count. This is also what makes navigating away mid-
+      // generation and coming back later work: the entry lands in
+      // history with a real viewedAt the instant it's ready, regardless
+      // of whether this component is still mounted to see it.
+      const saved = recordViewedLook(look);
       recordEvent({ type: "generate_look", lookId: saved.id ?? null, source: "look" });
+      setIsGeneratingLook(false);
+      if (!isMountedRef.current) return;
       setGeneratedLook(saved);
       setWeather((data.context?.weather as WeatherData | null) ?? null);
       setGenerateState("idle");
@@ -170,7 +222,8 @@ export default function LookPage() {
         router.replace("/look");
       }
     } catch {
-      setGenerateState("error");
+      setIsGeneratingLook(false);
+      if (isMountedRef.current) setGenerateState("error");
     }
   };
 
@@ -309,7 +362,7 @@ export default function LookPage() {
               key={gender}
               label={t(`look.gender.${gender}`)}
               selected={lookGender === gender}
-              onSelect={() => setLookGender(gender)}
+              onSelect={() => handleGenderChange(gender)}
             />
           ))}
         </div>
@@ -350,17 +403,17 @@ export default function LookPage() {
           onChange={(e) => setFreeText(e.target.value)}
           placeholder={t("look.freeTextPlaceholder")}
           rows={3}
-          className="mt-3 w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 text-[14px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
+          className="mt-3 w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 text-[16px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25"
         />
       </div>
 
       <button
         type="button"
         onClick={handleCreateLook}
-        disabled={generateState === "pending"}
+        disabled={isGeneratingLook}
         className="mt-7 flex items-center justify-center rounded-full bg-primary px-6 py-3.5 text-[14px] font-medium text-primary-foreground transition-transform active:scale-95 disabled:opacity-60"
       >
-        {generateState === "pending" ? t("look.creating") : t("look.createMyLook")}
+        {isGeneratingLook ? t("look.creating") : t("look.createMyLook")}
       </button>
 
       {generateState === "error" && (

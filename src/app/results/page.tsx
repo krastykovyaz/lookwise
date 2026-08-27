@@ -4,34 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, SearchX } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { useBuyerResults } from "@/lib/results";
+import { useBuyerResults, REVEAL_STEP } from "@/lib/results";
 import { useNavigationState } from "@/lib/navigation/state";
 import { ProductGrid } from "@/components/products/ProductGrid";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-// How many results are revealed per scroll-triggered load. Search can
-// return results in the thousands, so rendering them 20 at a time keeps
-// the DOM small instead of mounting every ProductCard at once.
-const REVEAL_STEP = 20;
-
 export default function ResultsPage() {
   const { t } = useI18n();
   const router = useRouter();
-  const { results, appendItems } = useBuyerResults();
+  const { results, appendItems, revealMore } = useBuyerResults();
   const { saveCurrentPosition } = useNavigationState();
-  const [revealCount, setRevealCount] = useState(REVEAL_STEP);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  // A new search replaces `results` outright (see setResults in page.tsx).
-  // Reset the reveal window when that happens by adjusting state during
-  // render (React's recommended alternative to a setState-in-effect for
-  // "reset on prop change") rather than in a useEffect.
-  const [trackedQuery, setTrackedQuery] = useState(results?.query);
-  if (results?.query !== trackedQuery) {
-    setTrackedQuery(results?.query);
-    setRevealCount(REVEAL_STEP);
-  }
+  // revealCount lives on `results` itself (see lib/results/index.tsx),
+  // not local state, specifically so it survives unmounting when the
+  // user opens a product and comes back — see that file's comment for
+  // why a local useState here previously broke scroll restoration.
+  const revealCount = results?.revealCount ?? REVEAL_STEP;
 
   // Keep the existing ranking, but show every result returned by Search.
   // Search is not a "top 3" view — it's just revealed gradually rather
@@ -46,7 +35,7 @@ export default function ResultsPage() {
 
   const handleShowMore = useCallback(async () => {
     if (revealCount < ranked.length) {
-      setRevealCount((count) => count + REVEAL_STEP);
+      revealMore();
       return;
     }
     if (!results?.criteria || !results.hasMore || isLoadingMore) return;
@@ -61,12 +50,12 @@ export default function ResultsPage() {
       const data = await response.json();
       if (response.ok) {
         appendItems(data.items, data.offset, data.hasMore);
-        setRevealCount((count) => count + REVEAL_STEP);
+        revealMore();
       }
     } finally {
       setIsLoadingMore(false);
     }
-  }, [revealCount, ranked.length, results, isLoadingMore, appendItems]);
+  }, [revealCount, ranked.length, results, isLoadingMore, appendItems, revealMore]);
 
   // Scroll-triggered loading: once the sentinel below the grid nears the
   // viewport, reveal the next 20 already-fetched items, or (once those run
