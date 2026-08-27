@@ -1,5 +1,6 @@
 import "server-only";
 import { PhotoAnalysisSchema, type PhotoAnalysis } from "@/lib/schemas";
+import { LOCALE_NAMES, type Locale } from "@/types/locale";
 
 // Google's official Generative Language REST API — no SDK dependency,
 // same "raw fetch" approach lib/ai/deepseek.ts already uses for its
@@ -162,14 +163,23 @@ Rules:
 - "items" covers clothing only (tops, bottoms, outerwear, dresses, etc.) — not shoes or accessories, which have their own arrays.
 - "overallStyle" is 1-4 short style descriptors for the whole outfit (e.g. "casual", "streetwear", "formal").
 - If nothing is recognizable, return empty arrays rather than guessing.
-- "description" is one or two natural-language sentences summarizing the outfit for a person who wants to shop for something similar — fluent prose, not a list. Describe only what's clearly visible; if something is uncertain, describe it conservatively (e.g. omit an unclear detail) rather than inventing it. Example style: "Beige oversized jacket over a white T-shirt, dark wide-leg trousers, black belt and white sneakers. Casual minimalist streetwear style." If nothing is recognizable, say so plainly instead of inventing an outfit.`;
+- "description" is one or two natural-language sentences summarizing the outfit for a person who wants to shop for something similar — fluent prose, not a list. Describe only what's clearly visible; if something is uncertain, describe it conservatively (e.g. omit an unclear detail) rather than inventing it. Example style: "Beige oversized jacket over a white T-shirt, dark wide-leg trousers, black belt and white sneakers. Casual minimalist streetwear style." If nothing is recognizable, say so plainly instead of inventing an outfit.
+- Write "description" in {{LANGUAGE}} — it's placed directly into the user's own look-request text field, which is always in that language. Every other field ("category", "color", "style", "fit", "overallStyle" entries) stays in English regardless of the requested language.`;
 
 /** Analyzes one outfit photo and returns a validated, structured
  *  description — never a shopping search, never a generated Look; see
  *  this function's only caller (api/look/photo-analyze/route.ts) for
- *  why that boundary matters. */
-export async function analyzeOutfitPhoto(imageBase64: string, mimeType: string): Promise<PhotoAnalysis> {
-  const content = await callGeminiVision(PHOTO_ANALYSIS_SYSTEM_PROMPT, imageBase64, mimeType);
+ *  why that boundary matters. `locale` controls only the language of
+ *  the "description" field (see the prompt's own rule above) — it
+ *  drives what actually lands in the user's free-text field, which is
+ *  always in their app's current language. */
+export async function analyzeOutfitPhoto(
+  imageBase64: string,
+  mimeType: string,
+  locale: Locale,
+): Promise<PhotoAnalysis> {
+  const prompt = PHOTO_ANALYSIS_SYSTEM_PROMPT.replace("{{LANGUAGE}}", LOCALE_NAMES[locale]);
+  const content = await callGeminiVision(prompt, imageBase64, mimeType);
 
   let parsed: unknown;
   try {

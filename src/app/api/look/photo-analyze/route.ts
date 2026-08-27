@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const analysis = await analyzeOutfitPhoto(parsed.data.imageBase64, parsed.data.mimeType);
+    const analysis = await analyzeOutfitPhoto(parsed.data.imageBase64, parsed.data.mimeType, parsed.data.locale);
     return NextResponse.json({ analysis });
   } catch (err) {
     if (err instanceof GeminiConfigError) {

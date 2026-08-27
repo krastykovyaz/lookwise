@@ -49,6 +49,22 @@ interface LookHistoryContextValue {
    *  generation that's still actually running. */
   isGeneratingLook: boolean;
   setIsGeneratingLook: (value: boolean) => void;
+  /** Same reasoning as isGeneratingLook above, for the "attach a photo
+   *  to the Anything else field" flow (app/look/page.tsx's
+   *  handlePhotoFile): the analysis request keeps running after the
+   *  user navigates away, so both the in-flight flag and the eventual
+   *  result live here rather than as page-local state — otherwise
+   *  returning to /look mid-analysis would show a fresh, idle attach
+   *  icon with no sign anything was running, and a result that finishes
+   *  while the user is elsewhere would have nowhere to land. */
+  isAnalyzingPhoto: boolean;
+  setIsAnalyzingPhoto: (value: boolean) => void;
+  /** Set once analysis finishes; /look's own effect consumes this (sets
+   *  its free-text field, then clears it back to null) the next time
+   *  it's mounted, whether that's immediately or after the user comes
+   *  back from elsewhere. */
+  pendingPhotoDescription: string | null;
+  setPendingPhotoDescription: (value: string | null) => void;
 }
 
 const LookHistoryContext = createContext<LookHistoryContextValue | null>(null);
@@ -96,6 +112,8 @@ export function LookHistoryProvider({ children }: { children: React.ReactNode })
   const [looks, setLooks] = useState<LookHistoryEntry[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isGeneratingLook, setIsGeneratingLook] = useState(false);
+  const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false);
+  const [pendingPhotoDescription, setPendingPhotoDescription] = useState<string | null>(null);
   const { status } = useSession();
 
   useEffect(() => {
@@ -215,8 +233,23 @@ export function LookHistoryProvider({ children }: { children: React.ReactNode })
       clearLook,
       isGeneratingLook,
       setIsGeneratingLook,
+      isAnalyzingPhoto,
+      setIsAnalyzingPhoto,
+      pendingPhotoDescription,
+      setPendingPhotoDescription,
     }),
-    [looks, latestLook, isLoaded, recordLookHistory, recordViewedLook, getLook, clearLook, isGeneratingLook],
+    [
+      looks,
+      latestLook,
+      isLoaded,
+      recordLookHistory,
+      recordViewedLook,
+      getLook,
+      clearLook,
+      isGeneratingLook,
+      isAnalyzingPhoto,
+      pendingPhotoDescription,
+    ],
   );
 
   return <LookHistoryContext.Provider value={value}>{children}</LookHistoryContext.Provider>;

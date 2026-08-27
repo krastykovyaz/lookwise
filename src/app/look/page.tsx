@@ -35,7 +35,6 @@ import { ShareButton } from "@/components/share/ShareButton";
 import type { PhotoAnalysis } from "@/lib/schemas";
 
 type GenerateState = "idle" | "pending" | "error";
-type PhotoAnalysisStatus = "idle" | "analyzing" | "error";
 
 const PHOTO_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -62,8 +61,18 @@ export default function LookPage() {
   const { status: sessionStatus } = useSession();
   const isAuthenticated = sessionStatus === "authenticated";
   const { profile, isLoaded, hasOnboarded, saveProfile } = useStyleProfile();
-  const { latestLook, looks, recordLookHistory, recordViewedLook, isGeneratingLook, setIsGeneratingLook } =
-    useLookHistory();
+  const {
+    latestLook,
+    looks,
+    recordLookHistory,
+    recordViewedLook,
+    isGeneratingLook,
+    setIsGeneratingLook,
+    isAnalyzingPhoto,
+    setIsAnalyzingPhoto,
+    pendingPhotoDescription,
+    setPendingPhotoDescription,
+  } = useLookHistory();
   const { isSaved, toggleSaved } = useSavedLooks();
   const { signals, record } = usePreferenceSignals();
   const { getSignal, isPending, ensureLoaded, toggle } = useProductSignals();
@@ -74,7 +83,10 @@ export default function LookPage() {
   const [lookGender, setLookGender] = useState<LookGender>("women");
   const [mood, setMood] = useState<LookMood | null>(null);
   const [freeText, setFreeText] = useState("");
-  const [photoAnalysisStatus, setPhotoAnalysisStatus] = useState<PhotoAnalysisStatus>("idle");
+  // In-flight/result state lives in LookHistoryProvider, not here — see
+  // that file's own doc for why. This is only the transient "the last
+  // attempt failed" flag, which doesn't need to survive navigation.
+  const [photoError, setPhotoError] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [currentCoordinates, setCurrentCoordinates] = useState<Coordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "locating" | "ready" | "denied">("idle");
@@ -133,39 +145,56 @@ export default function LookPage() {
   // field analyzes it (POST /api/look/photo-analyze — same endpoint/
   // schema as the rest of the look flow, see lib/ai/gemini.ts) and
   // replaces the field's text with Gemini's natural-language
-  // description — never a separate screen, never touching eBay or the
-  // generation flow below. The user can still freely edit the result.
+  // description, written in the app's current language — never a
+  // separate screen, never touching eBay or the generation flow below.
+  // The user can still freely edit the result. The fetch itself is
+  // fire-and-forget: isAnalyzingPhoto/pendingPhotoDescription live in
+  // LookHistoryProvider specifically so navigating away and back still
+  // shows progress and picks up the result — see that file's own doc.
   const handlePhotoFile = async (file: File | null | undefined) => {
-    if (!file || photoAnalysisStatus === "analyzing") return;
+    if (!file || isAnalyzingPhoto) return;
     if (!PHOTO_MIME_TYPES.includes(file.type)) {
-      setPhotoAnalysisStatus("error");
+      setPhotoError(true);
       return;
     }
 
-    setPhotoAnalysisStatus("analyzing");
+    setPhotoError(false);
+    setIsAnalyzingPhoto(true);
     try {
       const dataUrl = await readFileAsDataUrl(file);
       const parts = splitDataUrl(dataUrl);
       if (!parts) {
-        setPhotoAnalysisStatus("error");
+        setIsAnalyzingPhoto(false);
+        setPhotoError(true);
         return;
       }
       const res = await fetch("/api/look/photo-analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: parts.base64, mimeType: parts.mimeType }),
+        body: JSON.stringify({ imageBase64: parts.base64, mimeType: parts.mimeType, locale }),
       });
       const data = await res.json();
+      setIsAnalyzingPhoto(false);
       if (!res.ok) {
-        setPhotoAnalysisStatus("error");
+        setPhotoError(true);
         return;
       }
-      setFreeText((data.analysis as PhotoAnalysis).description);
-      setPhotoAnalysisStatus("idle");
+      setPendingPhotoDescription((data.analysis as PhotoAnalysis).description);
     } catch {
-      setPhotoAnalysisStatus("error");
+      setIsAnalyzingPhoto(false);
+      setPhotoError(true);
     }
   };
+
+  // Consumes a result that finished while the user was elsewhere (or
+  // just now, if they stayed) — fills the field once, then clears the
+  // pending value so it doesn't reapply on a later remount.
+  useEffect(() => {
+    if (pendingPhotoDescription != null) {
+      setFreeText(pendingPhotoDescription);
+      setPendingPhotoDescription(null);
+    }
+  }, [pendingPhotoDescription, setPendingPhotoDescription]);
 
   useEffect(() => {
     setHistoryId(new URLSearchParams(window.location.search).get("historyId"));
@@ -481,23 +510,23 @@ export default function LookPage() {
             }}
             placeholder={t("look.freeTextPlaceholder")}
             rows={3}
-            disabled={photoAnalysisStatus === "analyzing"}
+            disabled={isAnalyzingPhoto}
             className="w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3.5 pr-12 text-[16px] text-foreground placeholder:text-muted-soft outline-none focus:border-foreground/25 disabled:opacity-60"
           />
           <button
             type="button"
             onClick={() => photoInputRef.current?.click()}
-            disabled={photoAnalysisStatus === "analyzing"}
+            disabled={isAnalyzingPhoto}
             aria-label={t("look.attachPhoto")}
             className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-background text-muted disabled:opacity-60"
           >
             <Camera size={16} strokeWidth={1.75} />
           </button>
         </div>
-        {photoAnalysisStatus === "analyzing" && (
+        {isAnalyzingPhoto && (
           <p className="mt-2 text-[12.5px] text-muted">{t("look.photo.analyzing")}</p>
         )}
-        {photoAnalysisStatus === "error" && (
+        {!isAnalyzingPhoto && photoError && (
           <p className="mt-2 text-[12.5px] text-muted">{t("look.photo.errorGeneric")}</p>
         )}
       </div>

@@ -147,6 +147,29 @@ check(
   "expected success: false",
 );
 
+{
+  const result = PhotoAnalyzeRequestSchema.safeParse({ imageBase64: "aGVsbG8=", mimeType: "image/jpeg" });
+  check(
+    "locale defaults to 'en' when the client omits it — the description's language always has a defined fallback",
+    result.success && result.data.locale === "en",
+    `success: ${result.success}, locale: ${result.success ? result.data.locale : "n/a"}`,
+  );
+}
+
+for (const locale of ["en", "ru", "fr"]) {
+  check(
+    `locale "${locale}" is accepted`,
+    PhotoAnalyzeRequestSchema.safeParse({ imageBase64: "aGVsbG8=", mimeType: "image/jpeg", locale }).success,
+    "expected success: true",
+  );
+}
+
+check(
+  "an unsupported locale is rejected — only the app's actual supported languages",
+  !PhotoAnalyzeRequestSchema.safeParse({ imageBase64: "aGVsbG8=", mimeType: "image/jpeg", locale: "de" }).success,
+  "expected success: false",
+);
+
 check(
   "a request missing mimeType entirely is rejected",
   !PhotoAnalyzeRequestSchema.safeParse({ imageBase64: "aGVsbG8=" }).success,
@@ -164,7 +187,7 @@ async function checkConfigGuard() {
   try {
     const { analyzeOutfitPhoto, GeminiConfigError } = await import("../src/lib/ai/gemini");
     try {
-      await analyzeOutfitPhoto("aGVsbG8=", "image/jpeg");
+      await analyzeOutfitPhoto("aGVsbG8=", "image/jpeg", "en");
       check("analyzeOutfitPhoto without GEMINI_API_KEY throws before any network call", false, "did not throw");
     } catch (err) {
       check(
@@ -203,6 +226,11 @@ function checkRouteStructure() {
       !/from "@\/lib\/payments/.test(routeSource) &&
       !/lookGenerator/.test(routeSource),
     "expected no cross-feature imports",
+  );
+  check(
+    "the route forwards the client's locale to analyzeOutfitPhoto (drives the description's language)",
+    /analyzeOutfitPhoto\([^)]*parsed\.data\.locale/.test(routeSource),
+    "expected parsed.data.locale to be passed through",
   );
 }
 

@@ -303,5 +303,9 @@ export type PhotoAnalysis = z.infer<typeof PhotoAnalysisSchema>;
 export const PhotoAnalyzeRequestSchema = z.object({
   imageBase64: z.string().trim().min(1).max(15_000_000),
   mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  // Drives the language Gemini writes "description" in (see
+  // lib/ai/gemini.ts) — same default-to-"en" pattern as
+  // LookGenerateRequestSchema's own locale field above.
+  locale: z.enum(["en", "ru", "fr"]).default("en"),
 });
 export type PhotoAnalyzeRequestInput = z.infer<typeof PhotoAnalyzeRequestSchema>;
