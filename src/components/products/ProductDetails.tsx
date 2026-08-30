@@ -153,8 +153,10 @@ export function ProductDetails({ product }: { product: Product }) {
             {product.title}
           </h1>
           {product.dealScore != null && (
-            <div className="shrink-0" title={t("product.dealScore")}>
-              <Badge tone="positive">{product.dealScore}</Badge>
+            <div className="shrink-0">
+              <Badge tone="positive">
+                {t("product.score")} {product.dealScore}
+              </Badge>
             </div>
           )}
         </div>
