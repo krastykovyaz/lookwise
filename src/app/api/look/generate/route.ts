@@ -102,6 +102,7 @@ export async function POST(request: Request) {
           currency: current.budget.currency ?? null,
         }
       : null,
+    budgetRange: (current.budgetRange ?? null) as UserStyleProfile["budgetRange"],
     weather,
     temporal: current.temporal ?? null,
   }, parsed.data.preferenceSignals, locale, gender);

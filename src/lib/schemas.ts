@@ -115,6 +115,7 @@ export const LookGenerateRequestSchema = z.object({
         currency: z.string().nullish(),
       })
       .nullish(),
+    budgetRange: z.string().nullish(),
     temporal: z
       .object({
         localDate: z.string(),

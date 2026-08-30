@@ -7,8 +7,10 @@ import { Sparkles, MapPin, CloudSun, RefreshCw, ThumbsUp, ThumbsDown, ChevronLef
 import { useI18n } from "@/lib/i18n";
 import { useStyleProfile } from "@/lib/style/context";
 import {
+  BUDGET_RANGES,
   LOOK_INTENT_OPTIONS,
   MOOD_OPTIONS,
+  type BudgetRangeId,
   type LookMood,
   type GeneratedLook,
   type LookContextLocation,
@@ -82,6 +84,10 @@ export default function LookPage() {
   const [intent, setIntent] = useState<string | null>(null);
   const [lookGender, setLookGender] = useState<LookGender>("women");
   const [mood, setMood] = useState<LookMood | null>(null);
+  // A budget for this one look only — deliberately never read from or
+  // written to profile.budgetRange (the saved default shown in
+  // LookProfileSummary). See CurrentLookContext.budgetRange.
+  const [priceRange, setPriceRange] = useState<BudgetRangeId | null>(null);
   const [freeText, setFreeText] = useState("");
   // In-flight/result state lives in LookHistoryProvider, not here — see
   // that file's own doc for why. This is only the transient "the last
@@ -280,6 +286,7 @@ export default function LookPage() {
             freeText: freeText.trim() || null,
             location: currentLocation,
             budget: null,
+            budgetRange: priceRange,
             temporal,
           },
         }),
@@ -409,9 +416,7 @@ export default function LookPage() {
         </h1>
       </div>
 
-      <LookProfileSummary editReturnTo="/look" />
-
-      <div className="mt-5 rounded-2xl border border-border bg-surface px-4 py-3.5">
+      <LookProfileSummary editReturnTo="/look" showLabel>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <CloudSun size={17} className="text-muted" />
@@ -442,6 +447,20 @@ export default function LookPage() {
             {weather.windSpeed != null && <span>{Math.round(weather.windSpeed)} km/h</span>}
           </div>
         )}
+      </LookProfileSummary>
+
+      <div className="mt-7">
+        <h2 className="text-[15px] font-semibold text-foreground">{t("look.priceRangeTitle")}</h2>
+        <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          {BUDGET_RANGES.map((id) => (
+            <OptionChip
+              key={id}
+              label={t(`look.budget.${id}`)}
+              selected={priceRange === id}
+              onSelect={() => setPriceRange(priceRange === id ? null : id)}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="mt-7">

@@ -254,6 +254,10 @@ export interface CurrentLookContext {
   location: LookContextLocation | null;
   weather: WeatherData | null;
   budget: LookContextBudget | null;
+  /** A one-off budget band for this look only, picked on /look itself —
+   *  distinct from the profile's own budgetRange (which stays the
+   *  user's saved typical budget and is never overwritten by this). */
+  budgetRange: BudgetRangeId | null;
   temporal: LookTemporalContext | null;
 }
 
@@ -277,6 +281,7 @@ export function createEmptyLookContext(): CurrentLookContext {
     location: null,
     weather: null,
     budget: null,
+    budgetRange: null,
     temporal: null,
   };
 }
