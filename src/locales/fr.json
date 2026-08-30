@@ -12,14 +12,7 @@
     "brand": "Lookwise",
     "tagline": "Acheteur IA pour l'occasion.",
     "headline": "Que voulez-vous acheter ?",
-    "subheadline": "Dites-le à Compass AI. Je trouverai les meilleures options d'occasion.",
     "placeholder": "Trouve des Nike vintage à moins de 150 $...",
-    "examplesLabel": "Essayer un exemple",
-    "examples": [
-      "Trouve des Nike vintage à moins de 150 $",
-      "Je cherche une bonne veste en cuir",
-      "Trouve un appareil Leica d'occasion"
-    ],
     "loading1": "Analyse de votre demande...",
     "loading2": "Recherche des meilleures options...",
     "loading3": "Comparaison des résultats...",
@@ -249,7 +242,6 @@
     "generationComingSoon": "La génération de tenues arrive à la prochaine étape. Nous avons enregistré votre contexte — le styliste IA qui le transformera en tenues réelles sera ajouté ensuite.",
     "generationError": "Une erreur s'est produite. Veuillez réessayer.",
     "locationFoundNote": "Coordonnées actuelles : {coords}",
-    "yourStylePrefix": "Votre style :",
     "occasion": {
       "everyday": "Quotidien",
       "work": "Travail",

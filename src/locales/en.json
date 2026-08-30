@@ -12,14 +12,7 @@
     "brand": "Lookwise",
     "tagline": "AI buyer for pre-owned.",
     "headline": "What do you want to buy?",
-    "subheadline": "Tell Compass AI. I'll find the best used options for you.",
     "placeholder": "Find vintage Nike sneakers under $150...",
-    "examplesLabel": "Try an example",
-    "examples": [
-      "Find vintage Nike sneakers under $150",
-      "Looking for a good leather jacket",
-      "Find a used Leica camera"
-    ],
     "loading1": "Understanding your request...",
     "loading2": "Finding the best options...",
     "loading3": "Comparing results...",
@@ -249,7 +242,6 @@
     "generationComingSoon": "Look generation is coming next. We've saved what you're dressing for — the AI stylist that turns it into real outfits is the next milestone.",
     "generationError": "Something went wrong. Please try again.",
     "locationFoundNote": "Current coordinates: {coords}",
-    "yourStylePrefix": "Your Style:",
     "occasion": {
       "everyday": "Everyday",
       "work": "Work",
