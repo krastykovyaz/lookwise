@@ -10,7 +10,6 @@ import { useStyleProfile } from "@/lib/style/context";
 import { useEvents } from "@/lib/events/context";
 import { CompassOrb } from "@/components/ai/CompassOrb";
 import { AIInput } from "@/components/ai/AIInput";
-import { ExamplePrompt } from "@/components/ai/ExamplePrompt";
 import { LanguageSelector } from "@/components/ui/LanguageSelector";
 import { useNavigationState } from "@/lib/navigation/state";
 
@@ -68,15 +67,14 @@ const ERROR_COPY: Record<ErrorStatus, { title: string; body: string }> = {
 const STAGE_DELAY_MS = 900;
 
 export default function BuyerPage() {
-  const { t, tList, locale } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const { setResults } = useBuyerResults();
   const { searchQuery: query, setSearchQuery: setQuery, setSearchVisibleCount } = useNavigationState();
   const { record: recordEvent } = useEvents();
-  const { profile, isLoaded, hasOnboarded } = useStyleProfile();
+  const { hasOnboarded } = useStyleProfile();
   const [status, setStatus] = useState<Status>("idle");
 
-  const examples = tList("buyer.examples");
   const isLoading = status === "loading1" || status === "loading2" || status === "loading3";
   // No profile yet -> collect one first, then land straight on /look.
   // Already onboarded -> "Build a Look" always means starting a look,
@@ -148,9 +146,6 @@ export default function BuyerPage() {
         <h2 className="text-[21px] font-semibold tracking-tight text-foreground">
           {t("buyer.headline")}
         </h2>
-        <p className="mt-1.5 text-[14px] text-muted leading-5">
-          {t("buyer.subheadline")}
-        </p>
       </div>
 
       <div className="mt-6">
@@ -172,24 +167,6 @@ export default function BuyerPage() {
         <Sparkles size={16} strokeWidth={1.75} />
         {t("look.buildALook")}
       </Link>
-
-      {isLoaded && hasOnboarded && profile && (
-        <div className="mt-2.5 flex items-center justify-between px-1">
-          <p className="text-[11.5px] leading-4 text-muted">
-            {t("look.yourStylePrefix")}{" "}
-            <span className="font-medium text-foreground">
-              {profile.styleArchetypes.map((id) => t(`look.archetype.${id}.label`)).join(" · ")}
-              {profile.budgetRange ? ` · ${t(`look.budget.${profile.budgetRange}`)}` : ""}
-            </span>
-          </p>
-          <Link
-            href="/look/onboarding?returnTo=%2F"
-            className="shrink-0 text-[11.5px] font-medium text-foreground underline underline-offset-2"
-          >
-            {t("look.editProfile")}
-          </Link>
-        </div>
-      )}
 
       {isLoading ? (
         <p
@@ -217,18 +194,7 @@ export default function BuyerPage() {
             </button>
           )}
         </div>
-      ) : (
-        <div className="mt-5">
-          <p className="text-[12px] font-medium text-muted uppercase tracking-wide px-0.5">
-            {t("buyer.examplesLabel")}
-          </p>
-          <div className="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {examples.map((example) => (
-              <ExamplePrompt key={example} label={example} onSelect={setQuery} />
-            ))}
-          </div>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

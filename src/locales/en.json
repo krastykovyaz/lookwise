@@ -12,14 +12,7 @@
     "brand": "Lookwise",
     "tagline": "AI buyer for pre-owned.",
     "headline": "What do you want to buy?",
-    "subheadline": "Tell Compass AI. I'll find the best used options for you.",
     "placeholder": "Find vintage Nike sneakers under $150...",
-    "examplesLabel": "Try an example",
-    "examples": [
-      "Find vintage Nike sneakers under $150",
-      "Looking for a good leather jacket",
-      "Find a used Leica camera"
-    ],
     "loading1": "Understanding your request...",
     "loading2": "Finding the best options...",
     "loading3": "Comparing results...",
@@ -44,7 +37,8 @@
     "voiceListening": "Listening...",
     "voiceDenied": "Microphone access denied",
     "voiceError": "Voice input didn't work — try again",
-    "voiceUnsupported": "Voice input isn't supported in this browser"
+    "voiceUnsupported": "Voice input isn't supported in this browser",
+    "attachPhoto": "Search by photo"
   },
   "discover": {
     "title": "Discover",
@@ -135,6 +129,7 @@
     "returns": "Returns",
     "askCompass": "Ask Compass AI",
     "dealScore": "Deal Score",
+    "score": "Score",
     "viewOnEbay": "View on eBay",
     "insightsTitle": "Why this is interesting",
     "insightGoodPrice": "Good price for this result set",
@@ -178,8 +173,10 @@
     "profileEmptyTitle": "No style profile yet",
     "profileEmptyBody": "Build a look to get personalized outfit picks later.",
     "editProfile": "Edit",
+    "defaultSettings": "Default settings",
     "budgetLabel": "Budget",
     "locationLabel": "Location",
+    "priceRangeTitle": "Price range for this look",
     "step1Title": "Which feels most like you?",
     "step1Body": "Pick as many as you like — this helps LookAdviser understand your style.",
     "step2Title": "What's your typical budget for a complete look?",
@@ -248,7 +245,6 @@
     "generationComingSoon": "Look generation is coming next. We've saved what you're dressing for — the AI stylist that turns it into real outfits is the next milestone.",
     "generationError": "Something went wrong. Please try again.",
     "locationFoundNote": "Current coordinates: {coords}",
-    "yourStylePrefix": "Your Style:",
     "occasion": {
       "everyday": "Everyday",
       "work": "Work",

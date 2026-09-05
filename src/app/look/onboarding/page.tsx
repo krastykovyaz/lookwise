@@ -14,7 +14,7 @@ import type { BudgetRangeId, StyleArchetypeId, UserLocation } from "@/types/styl
 import { BUDGET_RANGES, STYLE_ARCHETYPES } from "@/types/style";
 import { OnboardingProgress } from "@/components/look/OnboardingProgress";
 import { StyleArchetypeCard } from "@/components/look/StyleArchetypeCard";
-import { BudgetOption } from "@/components/look/BudgetOption";
+import { OptionChip } from "@/components/look/OptionChip";
 
 const TOTAL_STEPS = 3;
 const DEFAULT_RETURN_TO = "/look";
@@ -228,9 +228,9 @@ function LookOnboardingForm() {
           </h1>
           <p className="mt-1.5 text-[13.5px] text-muted leading-5">{t("look.step2Body")}</p>
 
-          <div className="mt-5 flex flex-col gap-2">
+          <div className="mt-5 flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {BUDGET_RANGES.map((id) => (
-              <BudgetOption
+              <OptionChip
                 key={id}
                 label={t(`look.budget.${id}`)}
                 selected={budgetRange === id}

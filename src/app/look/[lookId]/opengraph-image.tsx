@@ -16,6 +16,16 @@ import { formatOgPrice } from "@/lib/og";
 // process's lifetime.
 sharp.cache(false);
 
+// libvips' own per-operation thread pool otherwise defaults to one
+// thread per CPU core, each decoding/resizing/compositing pixels
+// concurrently within a single render — real memory the box this
+// runs on doesn't reliably have spare, per the resource-contention
+// note above. Capping it to 1 serializes that internal work, trading
+// a little latency for a meaningfully smaller peak footprint per
+// render — the same trade-off this file already makes explicitly in
+// resolveGalleryTiles by decoding tiles one at a time.
+sharp.concurrency(1);
+
 // Telegram's regular link preview (a plain URL pasted in a chat) only
 // ever shows ONE image no matter how many og:image tags a page has —
 // multi-image galleries there are limited to Instant View (requires
@@ -295,18 +305,32 @@ function fallbackBuffer(title: string): Promise<Buffer> {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// A render failure under the memory contention described above is
+// often a momentary spike from whatever else is running on the box,
+// not a lasting condition — one short-backoff retry gives it a chance
+// to clear before this route gives up on a render it would otherwise
+// have produced fine a second later.
+async function withRetry<T>(render: () => Promise<T>): Promise<T> {
+  try {
+    return await render();
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return render();
+  }
+}
+
 export default async function Image({ params }: { params: Promise<{ lookId: string }> }) {
   const { lookId } = await params;
 
   // Never let this route fail the whole response — a crawler that gets
   // a 502 shows NO preview at all, worse than a plain branded fallback.
   try {
-    const buffer = await renderLookImage(lookId);
+    const buffer = await withRetry(() => renderLookImage(lookId));
     return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "image/png" } });
   } catch (err) {
     console.error("[opengraph-image] look render failed:", err);
     try {
-      const buffer = await fallbackBuffer("Lookwise");
+      const buffer = await withRetry(() => fallbackBuffer("Lookwise"));
       return new Response(new Uint8Array(buffer), { headers: { "Content-Type": "image/png" } });
     } catch (fallbackErr) {
       console.error("[opengraph-image] branded fallback also failed to render:", fallbackErr);

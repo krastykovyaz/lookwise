@@ -115,12 +115,19 @@ Rules:
   "styleNotes": ["Neutral palette", "Relaxed silhouette", "Weather-appropriate layering"]
 }`;
 
-function profileBudgetText(profile: UserStyleProfile): string {
-  if (!profile.budgetRange) return "no stated budget";
-  const bounds = BUDGET_RANGE_BOUNDS[profile.budgetRange];
+function budgetRangeText(budgetRange: UserStyleProfile["budgetRange"]): string {
+  if (!budgetRange) return "no stated budget";
+  const bounds = BUDGET_RANGE_BOUNDS[budgetRange];
   return bounds.max == null
     ? `from €${bounds.min} upward`
     : `€${bounds.min}–€${bounds.max} total`;
+}
+
+// A budget picked for this one look (see CurrentLookContext.budgetRange)
+// always wins over the profile's saved typical budget — it's a
+// deliberate per-request override, not a replacement for the profile.
+function effectiveBudgetRange(context: LookContext): UserStyleProfile["budgetRange"] {
+  return context.current.budgetRange ?? context.profile.budgetRange;
 }
 
 function contextForPrompt(context: LookContext): string {
@@ -129,7 +136,7 @@ function contextForPrompt(context: LookContext): string {
     requestedGender: context.gender,
     profile: {
       styles: context.profile.styleArchetypes,
-      budget: profileBudgetText(context.profile),
+      budget: budgetRangeText(effectiveBudgetRange(context)),
       fit: context.profile.preferredFit,
       preferredColors: context.profile.preferredColors,
       dislikedColors: context.profile.dislikedColors,
@@ -156,7 +163,7 @@ type ComponentSearchResult = {
 };
 
 /** Turns the user's selected budget band (a *total* for the whole
- *  outfit — see profileBudgetText) into a real per-component price
+ *  outfit — see budgetRangeText) into a real per-component price
  *  floor for eBay, split evenly across however many components the AI
  *  plan has. Previously nothing did this: the AI's own per-component
  *  maxPrice was the only price signal ever sent to eBay, so a "700+"
@@ -279,7 +286,7 @@ class AIProductLookGenerator implements LookGenerator {
     // this pipeline used to send to eBay — nothing ever enforced the
     // user's selected budget band (BUDGET_RANGE_BOUNDS) itself, so a
     // "700+" selection could silently return an outfit costing a
-    // fraction of that. profileBudgetText tells the model the band is a
+    // fraction of that. budgetRangeText tells the model the band is a
     // *total*, so split it evenly across however many components the
     // model planned and pass that as a real per-component floor to
     // eBay — the same "server-side filter as a soft hint" pattern
@@ -291,7 +298,7 @@ class AIProductLookGenerator implements LookGenerator {
         try {
           const { minPrice, maxPrice } = computeComponentSearchPriceBounds(
             component.maxPrice ?? null,
-            context.profile.budgetRange,
+            effectiveBudgetRange(context),
             componentCount,
           );
           const products = await productSearchProvider.search({

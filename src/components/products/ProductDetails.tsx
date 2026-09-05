@@ -21,6 +21,16 @@ interface Insight {
  * fields support (see Milestone 1 spec: never invent claims like
  * "authentic" the API doesn't back up).
  */
+// eBay's Browse API returns a full ISO-8601 timestamp for this field
+// (e.g. "2026-09-08T10:00:00.000Z") — a delivery estimate only ever
+// needs the date, not a time-of-day that isn't meaningful here. Same
+// date-only formatting convention as app/saved/page.tsx and
+// app/overview/page.tsx already use for other timestamps.
+function formatEstimatedDeliveryDate(iso: string): string | null {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString();
+}
+
 function buildInsights(product: Product, t: (key: string) => string): Insight[] {
   const insights: Insight[] = [];
 
@@ -64,7 +74,12 @@ export function ProductDetails({ product }: { product: Product }) {
             : null
         : null,
     },
-    { label: t("product.estimatedDelivery"), value: product.shipping?.estimatedDelivery ?? null },
+    {
+      label: t("product.estimatedDelivery"),
+      value: product.shipping?.estimatedDelivery
+        ? formatEstimatedDeliveryDate(product.shipping.estimatedDelivery)
+        : null,
+    },
     { label: t("product.returns"), value: product.returnPolicy },
   ].filter((row) => row.value);
 
@@ -138,9 +153,11 @@ export function ProductDetails({ product }: { product: Product }) {
             {product.title}
           </h1>
           {product.dealScore != null && (
-            <Badge tone="positive">
-              {t("product.dealScore")} {product.dealScore}
-            </Badge>
+            <div className="shrink-0">
+              <Badge tone="positive">
+                {t("product.score")} {product.dealScore}
+              </Badge>
+            </div>
           )}
         </div>
         <p className="mt-1 text-[13px] text-muted">{product.condition}</p>

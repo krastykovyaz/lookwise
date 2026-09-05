@@ -1,5 +1,5 @@
 import "server-only";
-import { PhotoAnalysisSchema, type PhotoAnalysis } from "@/lib/schemas";
+import { PhotoAnalysisSchema, type PhotoAnalysis, ProductPhotoAnalysisSchema, type ProductPhotoAnalysis } from "@/lib/schemas";
 import { LOCALE_NAMES, type Locale } from "@/types/locale";
 
 // Google's official Generative Language REST API — no SDK dependency,
@@ -190,6 +190,58 @@ export async function analyzeOutfitPhoto(
   }
 
   const result = PhotoAnalysisSchema.safeParse(parsed);
+  if (!result.success) {
+    console.error(
+      `[Compass] Gemini error: schema validation failed (${result.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.code}`)
+        .join("; ")})`,
+    );
+    throw new GeminiOutputError(`Gemini's structured output failed validation: ${result.error.message}`);
+  }
+  return result.data;
+}
+
+// A single-product analysis, not an outfit one — different task, own
+// prompt/schema, but shares every other primitive above (callGeminiVision,
+// extractJsonObject, the error classes) with analyzeOutfitPhoto, the
+// same way lib/ai/deepseek.ts's parseBuyerRequest/askAboutProduct share
+// one callDeepSeek. Feeds the search box (see components/ai/AIInput.tsx),
+// not the look-builder's free-text field.
+const PRODUCT_PHOTO_ANALYSIS_SYSTEM_PROMPT = `You are a product identification assistant. Look at the attached photo of ONE specific item (not a full outfit) and describe ONLY what is visible, as a search query someone could use to find this exact item or something very similar secondhand.
+
+Rules:
+- Describe: item type, brand/model if clearly legible or unmistakable (e.g. a visible logo), color, material, distinctive details (hardware, pattern, print, silhouette), and style.
+- Never invent a brand, model, price, size, or condition that isn't visible — if unsure, omit it rather than guessing.
+- Do not mention sellers, marketplaces, or where to buy it — you are describing, not shopping.
+- If the photo shows more than one distinct item, describe only the single most prominent one.
+- Respond with a single JSON object only, no prose, matching exactly this shape:
+{ "description": string }
+- "description" is one concise sentence (not a list, no trailing period-separated fragments) conservative and specific — example style: "Black leather biker jacket with silver zip hardware and a slim fit." or "White ceramic vase with a narrow neck and matte finish." If nothing is clearly identifiable, say so plainly (e.g. "No clearly identifiable item in this photo.") instead of inventing one.
+- Write "description" in {{LANGUAGE}} — it's placed directly into the user's own search field, which is always in that language.`;
+
+/** Analyzes a photo of ONE product and returns a validated, concise
+ *  search-ready description — never a shopping search, never eBay
+ *  results; see this function's only caller
+ *  (api/buyer/photo-analyze/route.ts) for why that boundary matters.
+ *  `locale` controls only the language of "description", same as
+ *  analyzeOutfitPhoto's own `locale` parameter. */
+export async function analyzeProductPhoto(
+  imageBase64: string,
+  mimeType: string,
+  locale: Locale,
+): Promise<ProductPhotoAnalysis> {
+  const prompt = PRODUCT_PHOTO_ANALYSIS_SYSTEM_PROMPT.replace("{{LANGUAGE}}", LOCALE_NAMES[locale]);
+  const content = await callGeminiVision(prompt, imageBase64, mimeType);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJsonObject(content));
+  } catch {
+    console.error("[Compass] Gemini error: response was not valid JSON");
+    throw new GeminiOutputError("Gemini did not return valid JSON.");
+  }
+
+  const result = ProductPhotoAnalysisSchema.safeParse(parsed);
   if (!result.success) {
     console.error(
       `[Compass] Gemini error: schema validation failed (${result.error.issues
